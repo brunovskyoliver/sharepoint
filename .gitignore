@@ -9,3 +9,6 @@ venv/
 .DS_Store
 
 *.log
+
+hrportal-pages.json
+hrportal-media/

@@ -7,6 +7,7 @@
                 <field name="name"/>
                 <field name="member_ids"/>
                 <filter name="my_teams" string="My Teams" domain="[('accessible_user_ids', 'in', [uid])]"/>
+                <filter name="hr_portal" string="HR Portal" domain="[('hr_portal_managed', '=', True)]"/>
                 <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
                 <group>
                     <filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/>
@@ -24,6 +25,7 @@
                 <field name="user_role"/>
                 <field name="document_count"/>
                 <field name="page_count"/>
+                <field name="hr_portal_managed"/>
                 <field name="company_id" groups="base.group_multi_company"/>
                 <field name="active"/>
             </list>
@@ -41,6 +43,7 @@
                 <field name="user_role"/>
                 <field name="document_count"/>
                 <field name="page_count"/>
+                <field name="hr_portal_managed"/>
                 <templates>
                     <t t-name="card">
                         <div class="o_sharepoint_team_card">
@@ -52,6 +55,9 @@
                                       t-attf-class="badge o_sharepoint_role_badge o_sharepoint_role_badge_#{record.user_role.raw_value}">
                                     <field name="user_role"/>
                                 </span>
+                            </div>
+                            <div t-if="record.hr_portal_managed.raw_value" class="o_sharepoint_team_marker">
+                                <i class="fa fa-id-badge me-1"/> Employee portal
                             </div>
                             <div class="o_sharepoint_team_description text-muted">
                                 <field name="description"/>
@@ -87,6 +93,7 @@
                 </header>
                 <sheet>
                     <field name="user_role" invisible="1"/>
+                    <field name="hr_portal_managed" invisible="1"/>
                     <div class="oe_button_box" name="button_box">
                         <button class="oe_stat_button" name="action_open_documents" type="object" icon="fa-folder-open">
                             <field name="document_count" widget="statinfo" string="Documents"/>
@@ -104,6 +111,7 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="active"/>
                             <field name="color" widget="color_picker"/>
+                            <field name="hr_portal_managed" readonly="1" groups="sharepoint.group_sharepoint_manager"/>
                         </group>
                         <group>
                             <field name="document_folder_id" readonly="1"/>
@@ -116,6 +124,7 @@
                                 <list editable="bottom">
                                     <field name="user_id"/>
                                     <field name="role"/>
+                                    <field name="source" readonly="1" optional="show"/>
                                 </list>
                             </field>
                         </page>

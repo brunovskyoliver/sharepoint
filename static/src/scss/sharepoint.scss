@@ -11,6 +11,7 @@
 }
 
 .o_sharepoint_team_header,
+.o_sharepoint_team_marker,
 .o_sharepoint_team_stats,
 .o_sharepoint_team_actions {
     display: flex;
@@ -46,6 +47,17 @@
 .o_sharepoint_team_description {
     min-height: 2.75rem;
     overflow: hidden;
+}
+
+.o_sharepoint_team_marker {
+    width: fit-content;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid var(--bs-info-border-subtle);
+    border-radius: 0.25rem;
+    background: var(--bs-info-bg-subtle);
+    color: var(--bs-info-text-emphasis);
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
 .o_sharepoint_team_stats {
