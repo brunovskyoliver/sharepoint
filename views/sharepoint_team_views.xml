@@ -1,0 +1,144 @@
+<odoo>
+    <record id="view_sharepoint_team_search" model="ir.ui.view">
+        <field name="name">sharepoint.team.search</field>
+        <field name="model">sharepoint.team</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="member_ids"/>
+                <filter name="my_teams" string="My Teams" domain="[('accessible_user_ids', 'in', [uid])]"/>
+                <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+                <group>
+                    <filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_sharepoint_team_list" model="ir.ui.view">
+        <field name="name">sharepoint.team.list</field>
+        <field name="model">sharepoint.team</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="user_role"/>
+                <field name="document_count"/>
+                <field name="page_count"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_sharepoint_team_kanban" model="ir.ui.view">
+        <field name="name">sharepoint.team.kanban</field>
+        <field name="model">sharepoint.team</field>
+        <field name="arch" type="xml">
+            <kanban js_class="sharepoint_team_kanban" class="o_sharepoint_team_kanban" default_group_by="company_id" highlight_color="color">
+                <field name="name"/>
+                <field name="description"/>
+                <field name="color"/>
+                <field name="user_role"/>
+                <field name="document_count"/>
+                <field name="page_count"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="o_sharepoint_team_card">
+                            <div class="o_sharepoint_team_header">
+                                <strong t-attf-class="o_sharepoint_team_title o_sharepoint_team_color_#{record.color.raw_value or 0}">
+                                    <field name="name"/>
+                                </strong>
+                                <span t-if="record.user_role.raw_value"
+                                      t-attf-class="badge o_sharepoint_role_badge o_sharepoint_role_badge_#{record.user_role.raw_value}">
+                                    <field name="user_role"/>
+                                </span>
+                            </div>
+                            <div class="o_sharepoint_team_description text-muted">
+                                <field name="description"/>
+                            </div>
+                            <div class="o_sharepoint_team_stats">
+                                <span><field name="document_count"/> documents</span>
+                                <span><field name="page_count"/> pages</span>
+                            </div>
+                            <div class="o_sharepoint_team_actions">
+                                <button type="object" name="action_open_documents" class="btn btn-primary btn-sm">
+                                    <i class="fa fa-folder-open me-1"/> Documents
+                                </button>
+                                <button type="object" name="action_open_pages" class="btn btn-secondary btn-sm">
+                                    <i class="fa fa-file-text-o me-1"/> Pages
+                                </button>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_sharepoint_team_form" model="ir.ui.view">
+        <field name="name">sharepoint.team.form</field>
+        <field name="model">sharepoint.team</field>
+        <field name="arch" type="xml">
+            <form string="Team">
+                <header>
+                    <button name="action_sync_access" string="Sync Access" type="object" class="btn-secondary" invisible="user_role not in ['owner', 'admin']"/>
+                    <button name="action_archive" string="Archive" type="object" invisible="not active or user_role != 'owner'"/>
+                    <button name="action_unarchive" string="Restore" type="object" invisible="active or user_role != 'owner'"/>
+                </header>
+                <sheet>
+                    <field name="user_role" invisible="1"/>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" name="action_open_documents" type="object" icon="fa-folder-open">
+                            <field name="document_count" widget="statinfo" string="Documents"/>
+                        </button>
+                        <button class="oe_stat_button" name="action_open_pages" type="object" icon="fa-file-text-o">
+                            <field name="page_count" widget="statinfo" string="Pages"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                            <field name="color" widget="color_picker"/>
+                        </group>
+                        <group>
+                            <field name="document_folder_id" readonly="1"/>
+                            <field name="knowledge_article_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Members">
+                            <field name="member_ids">
+                                <list editable="bottom">
+                                    <field name="user_id"/>
+                                    <field name="role"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Overview">
+                            <field name="description" placeholder="Purpose, ownership, and working notes for this team."/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_sharepoint_team_hub" model="ir.actions.act_window">
+        <field name="name">SharePoint</field>
+        <field name="res_model">sharepoint.team</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="context">{'search_default_my_teams': 1}</field>
+        <field name="search_view_id" ref="sharepoint.view_sharepoint_team_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Create a team space</p>
+            <p>Each team gets a document library and a Knowledge page.</p>
+        </field>
+    </record>
+
+</odoo>

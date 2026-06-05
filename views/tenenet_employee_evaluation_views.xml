@@ -1,0 +1,15 @@
+<odoo>
+    <record id="view_tenenet_employee_evaluation_form_sharepoint" model="ir.ui.view">
+        <field name="name">tenenet.employee.evaluation.form.sharepoint</field>
+        <field name="model">tenenet.employee.evaluation</field>
+        <field name="inherit_id" ref="tenenet_projects.view_tenenet_employee_evaluation_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/button[@name='action_open_sign_request']" position="after">
+                <button invisible="not signed_document_id" name="action_open_signed_document" string="Podpísaný dokument" type="object"/>
+            </xpath>
+            <xpath expr="//field[@name='sign_state']" position="after">
+                <field invisible="not signed_document_id" name="signed_document_id" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

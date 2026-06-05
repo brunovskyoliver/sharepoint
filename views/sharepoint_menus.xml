@@ -1,0 +1,12 @@
+<odoo>
+    <menuitem id="menu_sharepoint_root"
+              name="SharePoint"
+              sequence="45"
+              action="sharepoint.action_sharepoint_team_hub"/>
+
+    <menuitem id="menu_sharepoint_teams"
+              name="Teams"
+              parent="sharepoint.menu_sharepoint_root"
+              action="sharepoint.action_sharepoint_team_hub"
+              sequence="10"/>
+</odoo>
