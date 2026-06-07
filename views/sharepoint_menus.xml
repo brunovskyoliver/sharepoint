@@ -4,7 +4,7 @@
     </record>
 
     <menuitem id="menu_sharepoint_teams"
-              name="Teams"
+              name="Tímy"
               parent="documents.menu_root"
               action="sharepoint.action_sharepoint_team_hub"
               sequence="1"/>

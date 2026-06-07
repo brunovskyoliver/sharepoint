@@ -10,21 +10,21 @@
     </record>
 
     <record id="group_sharepoint_manager" model="res.groups">
-        <field name="name">Manager</field>
+        <field name="name">Manažér</field>
         <field name="privilege_id" ref="sharepoint.res_groups_privilege_sharepoint"/>
         <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
         <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
     </record>
 
     <record id="rule_sharepoint_team_manager_all" model="ir.rule">
-        <field name="name">SharePoint teams: managers manage all</field>
+        <field name="name">Tímy SharePoint: manažéri spravujú všetko</field>
         <field name="model_id" ref="model_sharepoint_team"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('sharepoint.group_sharepoint_manager'))]"/>
     </record>
 
     <record id="rule_sharepoint_team_user_read" model="ir.rule">
-        <field name="name">SharePoint teams: members read active teams</field>
+        <field name="name">Tímy SharePoint: členovia čítajú aktívne tímy</field>
         <field name="model_id" ref="model_sharepoint_team"/>
         <field name="domain_force">[('active', '=', True), ('accessible_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>
@@ -34,7 +34,7 @@
     </record>
 
     <record id="rule_sharepoint_team_owner_write" model="ir.rule">
-        <field name="name">SharePoint teams: owners edit teams</field>
+        <field name="name">Tímy SharePoint: vlastníci upravujú tímy</field>
         <field name="model_id" ref="model_sharepoint_team"/>
         <field name="domain_force">[('active', '=', True), ('owner_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>
@@ -44,14 +44,14 @@
     </record>
 
     <record id="rule_sharepoint_team_member_manager_all" model="ir.rule">
-        <field name="name">SharePoint team members: managers manage all</field>
+        <field name="name">Členovia tímov SharePoint: manažéri spravujú všetko</field>
         <field name="model_id" ref="model_sharepoint_team_member"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('sharepoint.group_sharepoint_manager'))]"/>
     </record>
 
     <record id="rule_sharepoint_team_member_user_read" model="ir.rule">
-        <field name="name">SharePoint team members: users read own teams</field>
+        <field name="name">Členovia tímov SharePoint: používatelia čítajú vlastné tímy</field>
         <field name="model_id" ref="model_sharepoint_team_member"/>
         <field name="domain_force">[('team_id.active', '=', True), ('team_id.accessible_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>
@@ -61,7 +61,7 @@
     </record>
 
     <record id="rule_sharepoint_team_member_owner_write" model="ir.rule">
-        <field name="name">SharePoint team members: owners manage membership</field>
+        <field name="name">Členovia tímov SharePoint: vlastníci spravujú členstvo</field>
         <field name="model_id" ref="model_sharepoint_team_member"/>
         <field name="domain_force">[('team_id.active', '=', True), ('team_id.owner_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>
@@ -69,7 +69,7 @@
     </record>
 
     <record id="rule_sharepoint_team_admin_write" model="ir.rule">
-        <field name="name">SharePoint teams: admins edit teams</field>
+        <field name="name">Tímy SharePoint: administrátori upravujú tímy</field>
         <field name="model_id" ref="model_sharepoint_team"/>
         <field name="domain_force">[('active', '=', True), ('admin_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>
@@ -79,7 +79,7 @@
     </record>
 
     <record id="rule_sharepoint_team_member_admin_write" model="ir.rule">
-        <field name="name">SharePoint team members: admins manage users and visitors</field>
+        <field name="name">Členovia tímov SharePoint: administrátori spravujú používateľov a návštevníkov</field>
         <field name="model_id" ref="model_sharepoint_team_member"/>
         <field name="domain_force">[('team_id.active', '=', True), ('team_id.admin_user_ids', 'in', [user.id]), ('role', 'in', ['member', 'visitor'])]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>

@@ -5,18 +5,18 @@ from odoo.fields import Domain
 class DocumentsDocument(models.Model):
     _inherit = "documents.document"
 
-    sharepoint_drive_id = fields.Char(string="SharePoint Drive ID", copy=False, index=True)
-    sharepoint_drive_item_id = fields.Char(string="SharePoint Drive Item ID", copy=False, index=True)
-    sharepoint_source_url = fields.Char(string="SharePoint Source URL", copy=False)
-    sharepoint_source_etag = fields.Char(string="SharePoint Source eTag", copy=False)
-    sharepoint_source_modified = fields.Datetime(string="SharePoint Source Modified", copy=False)
-    sharepoint_source_page_id = fields.Char(string="SharePoint Source Page ID", copy=False, index=True)
-    sharepoint_source_page_title = fields.Char(string="SharePoint Source Page Title", copy=False)
-    sharepoint_source_path = fields.Char(string="SharePoint Source Path", copy=False)
+    sharepoint_drive_id = fields.Char(string="ID SharePoint disku", copy=False, index=True)
+    sharepoint_drive_item_id = fields.Char(string="ID položky SharePoint disku", copy=False, index=True)
+    sharepoint_source_url = fields.Char(string="URL zdroja SharePoint", copy=False)
+    sharepoint_source_etag = fields.Char(string="eTag zdroja SharePoint", copy=False)
+    sharepoint_source_modified = fields.Datetime(string="Zmenené v zdroji SharePoint", copy=False)
+    sharepoint_source_page_id = fields.Char(string="ID zdrojovej stránky SharePoint", copy=False, index=True)
+    sharepoint_source_page_title = fields.Char(string="Názov zdrojovej stránky SharePoint", copy=False)
+    sharepoint_source_path = fields.Char(string="Cesta v zdroji SharePoint", copy=False)
 
     _unique_sharepoint_drive_item = models.Constraint(
         "UNIQUE(sharepoint_drive_id, sharepoint_drive_item_id)",
-        "A SharePoint drive item has already been imported.",
+        "Táto položka SharePoint disku už bola importovaná.",
     )
 
     def _search_user_permission(self, operator, value, exclude_ownership=False):

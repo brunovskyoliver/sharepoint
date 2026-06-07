@@ -6,11 +6,11 @@
             <search>
                 <field name="name"/>
                 <field name="member_ids"/>
-                <filter name="my_teams" string="My Teams" domain="[('accessible_user_ids', 'in', [uid])]"/>
-                <filter name="hr_portal" string="HR Portal" domain="[('hr_portal_managed', '=', True)]"/>
-                <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+                <filter name="my_teams" string="Moje tímy" domain="[('accessible_user_ids', 'in', [uid])]"/>
+                <filter name="hr_portal" string="HR portál" domain="[('hr_portal_managed', '=', True)]"/>
+                <filter name="archived" string="Archivované" domain="[('active', '=', False)]"/>
                 <group>
-                    <filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/>
+                    <filter name="group_company" string="Spoločnosť" context="{'group_by': 'company_id'}"/>
                 </group>
             </search>
         </field>
@@ -57,21 +57,21 @@
                                 </span>
                             </div>
                             <div t-if="record.hr_portal_managed.raw_value" class="o_sharepoint_team_marker">
-                                <i class="fa fa-id-badge me-1"/> Employee portal
+                                <i class="fa fa-id-badge me-1"/> Zamestnanecký portál
                             </div>
                             <div class="o_sharepoint_team_description text-muted">
                                 <field name="description"/>
                             </div>
                             <div class="o_sharepoint_team_stats">
-                                <span><field name="document_count"/> documents</span>
-                                <span><field name="page_count"/> pages</span>
+                                <span><field name="document_count"/> dokumentov</span>
+                                <span><field name="page_count"/> stránok</span>
                             </div>
                             <div class="o_sharepoint_team_actions">
                                 <button type="object" name="action_open_documents" class="btn btn-primary btn-sm">
-                                    <i class="fa fa-folder-open me-1"/> Documents
+                                    <i class="fa fa-folder-open me-1"/> Dokumenty
                                 </button>
                                 <button type="object" name="action_open_pages" class="btn btn-secondary btn-sm">
-                                    <i class="fa fa-file-text-o me-1"/> Pages
+                                    <i class="fa fa-file-text-o me-1"/> Stránky
                                 </button>
                             </div>
                         </div>
@@ -85,24 +85,24 @@
         <field name="name">sharepoint.team.form</field>
         <field name="model">sharepoint.team</field>
         <field name="arch" type="xml">
-            <form string="Team">
+            <form string="Tím">
                 <header>
-                    <button name="action_sync_access" string="Sync Access" type="object" class="btn-secondary" invisible="user_role not in ['owner', 'admin']"/>
-                    <button name="action_archive" string="Archive" type="object" invisible="not active or user_role != 'owner'"/>
-                    <button name="action_unarchive" string="Restore" type="object" invisible="active or user_role != 'owner'"/>
+                    <button name="action_sync_access" string="Synchronizovať prístup" type="object" class="btn-secondary" invisible="user_role not in ['owner', 'admin']"/>
+                    <button name="action_archive" string="Archivovať" type="object" invisible="not active or user_role != 'owner'"/>
+                    <button name="action_unarchive" string="Obnoviť" type="object" invisible="active or user_role != 'owner'"/>
                 </header>
                 <sheet>
                     <field name="user_role" invisible="1"/>
                     <field name="hr_portal_managed" invisible="1"/>
                     <div class="oe_button_box" name="button_box">
                         <button class="oe_stat_button" name="action_open_documents" type="object" icon="fa-folder-open">
-                            <field name="document_count" widget="statinfo" string="Documents"/>
+                            <field name="document_count" widget="statinfo" string="Dokumenty"/>
                         </button>
                         <button class="oe_stat_button" name="action_open_pages" type="object" icon="fa-file-text-o">
-                            <field name="page_count" widget="statinfo" string="Pages"/>
+                            <field name="page_count" widget="statinfo" string="Stránky"/>
                         </button>
                     </div>
-                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <widget name="web_ribbon" title="Archivované" bg_color="text-bg-danger" invisible="active"/>
                     <div class="oe_title">
                         <h1><field name="name"/></h1>
                     </div>
@@ -119,7 +119,7 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Members">
+                        <page string="Členovia">
                             <field name="member_ids">
                                 <list editable="bottom">
                                     <field name="user_id"/>
@@ -128,8 +128,8 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Overview">
-                            <field name="description" placeholder="Purpose, ownership, and working notes for this team."/>
+                        <page string="Prehľad">
+                            <field name="description" placeholder="Účel, vlastníctvo a pracovné poznámky k tomuto tímu."/>
                         </page>
                     </notebook>
                 </sheet>
@@ -145,8 +145,8 @@
         <field name="context">{'search_default_my_teams': 1}</field>
         <field name="search_view_id" ref="sharepoint.view_sharepoint_team_search"/>
         <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">Create a team space</p>
-            <p>Each team gets a document library and a Knowledge page.</p>
+            <p class="o_view_nocontent_smiling_face">Vytvorte tímový priestor</p>
+            <p>Každý tím dostane knižnicu dokumentov a stránku v Znalostiach.</p>
         </field>
     </record>
 

@@ -21,31 +21,32 @@ from odoo.exceptions import UserError, ValidationError
 
 class SharePointTeam(models.Model):
     _name = "sharepoint.team"
-    _description = "SharePoint Team"
+    _description = "Tím SharePoint"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "name"
     _GRAPH_BANNER_WEBPART_TYPE = "cbe7b0a9-3504-44dd-a3a3-0e5cacd07788"
 
-    name = fields.Char(required=True, tracking=True)
-    active = fields.Boolean(default=True, tracking=True)
-    description = fields.Text()
+    name = fields.Char(string="Názov", required=True, tracking=True)
+    active = fields.Boolean(string="Aktívne", default=True, tracking=True)
+    description = fields.Text(string="Popis")
     company_id = fields.Many2one(
         "res.company",
+        string="Spoločnosť",
         default=lambda self: self.env.company,
         required=True,
         index=True,
     )
-    color = fields.Integer()
+    color = fields.Integer(string="Farba")
     hr_portal_managed = fields.Boolean(
-        string="Managed HR Portal",
+        string="Spravovaný HR portál",
         copy=False,
         index=True,
-        help="Automatically keeps active employees with active internal users as visitors.",
+        help="Automaticky udržiava aktívnych zamestnancov s aktívnymi internými používateľmi ako návštevníkov.",
     )
     member_ids = fields.One2many(
         "sharepoint.team.member",
         "team_id",
-        string="Members",
+        string="Členovia",
         copy=True,
     )
     owner_user_ids = fields.Many2many(
@@ -55,7 +56,7 @@ class SharePointTeam(models.Model):
         "user_id",
         compute="_compute_access_users",
         store=True,
-        string="Owners",
+        string="Vlastníci",
     )
     admin_user_ids = fields.Many2many(
         "res.users",
@@ -64,7 +65,7 @@ class SharePointTeam(models.Model):
         "user_id",
         compute="_compute_access_users",
         store=True,
-        string="Admins",
+        string="Administrátori",
     )
     accessible_user_ids = fields.Many2many(
         "res.users",
@@ -73,7 +74,7 @@ class SharePointTeam(models.Model):
         "user_id",
         compute="_compute_access_users",
         store=True,
-        string="Users With Access",
+        string="Používatelia s prístupom",
     )
     synced_partner_ids = fields.Many2many(
         "res.partner",
@@ -81,30 +82,31 @@ class SharePointTeam(models.Model):
         "team_id",
         "partner_id",
         copy=False,
-        string="Synchronized Partners",
+        string="Synchronizovaní partneri",
     )
     document_folder_id = fields.Many2one(
         "documents.document",
         readonly=True,
         copy=False,
-        string="Document Library",
+        string="Knižnica dokumentov",
     )
     knowledge_article_id = fields.Many2one(
         "knowledge.article",
         readonly=True,
         copy=False,
-        string="Team Page",
+        string="Tímová stránka",
     )
-    document_count = fields.Integer(compute="_compute_content_counts")
-    page_count = fields.Integer(compute="_compute_content_counts")
+    document_count = fields.Integer(string="Počet dokumentov", compute="_compute_content_counts")
+    page_count = fields.Integer(string="Počet stránok", compute="_compute_content_counts")
     user_role = fields.Selection(
-        [("owner", "Owner"), ("admin", "Admin"), ("member", "User"), ("visitor", "Visitor")],
+        [("owner", "Vlastník"), ("admin", "Administrátor"), ("member", "Používateľ"), ("visitor", "Návštevník")],
         compute="_compute_user_role",
+        string="Moja rola",
     )
 
     _unique_name_company = models.Constraint(
         "UNIQUE(name, company_id)",
-        "A SharePoint team with this name already exists in this company.",
+        "Tím SharePoint s týmto názvom už v tejto spoločnosti existuje.",
     )
 
     @api.depends("member_ids.user_id", "member_ids.role")
@@ -151,7 +153,7 @@ class SharePointTeam(models.Model):
     def _check_has_owner(self):
         for team in self:
             if team.active and not team.member_ids.filtered(lambda member: member.role == "owner"):
-                raise ValidationError(_("A team must have at least one owner."))
+                raise ValidationError(_("Tím musí mať aspoň jedného vlastníka."))
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -198,7 +200,7 @@ class SharePointTeam(models.Model):
     def action_open_documents(self):
         self.ensure_one()
         if not self.document_folder_id:
-            raise UserError(_("This team does not have a document library yet."))
+            raise UserError(_("Tento tím ešte nemá knižnicu dokumentov."))
         return {
             "type": "ir.actions.client",
             "tag": "document_action_preference",
@@ -216,7 +218,7 @@ class SharePointTeam(models.Model):
     def action_open_pages(self):
         self.ensure_one()
         if not self.knowledge_article_id:
-            raise UserError(_("This team does not have a Knowledge page yet."))
+            raise UserError(_("Tento tím ešte nemá stránku v Znalostiach."))
         return {
             "type": "ir.actions.act_window",
             "name": self.knowledge_article_id.display_name,
@@ -270,7 +272,7 @@ class SharePointTeam(models.Model):
                 "<p>Interné HR novinky, dokumenty a užitočné informácie pre zamestnancov.</p>"
             )
         return _(
-            "<h2>%(team)s</h2><p>Team news, notes, decisions, and useful links.</p>",
+            "<h2>%(team)s</h2><p>Tímové novinky, poznámky, rozhodnutia a užitočné odkazy.</p>",
             team=self.name,
         )
 
@@ -410,7 +412,7 @@ class SharePointTeam(models.Model):
             team = Team.create({
                 "name": "HR portál",
                 "description": _(
-                    "Employee HR portal for internal announcements, Knowledge pages, and HR files."
+                    "Zamestnanecký HR portál pre interné oznamy, stránky v Znalostiach a HR súbory."
                 ),
                 "company_id": self.env.company.id,
                 "hr_portal_managed": True,
@@ -537,7 +539,7 @@ class SharePointTeam(models.Model):
     def action_import_hr_portal_graph_pages(self, export_path, media_dir=False):
         self.ensure_one()
         if not self.hr_portal_managed:
-            raise UserError(_("SharePoint page import is only available on the managed HR Portal team."))
+            raise UserError(_("Import stránok SharePoint je dostupný iba pre spravovaný tím HR portálu."))
         return self._import_hr_portal_graph_pages(export_path, media_dir=media_dir)
 
     @api.model
@@ -550,13 +552,13 @@ class SharePointTeam(models.Model):
         self._ensure_team_resources()
         export_file = Path(export_path).expanduser()
         if not export_file.exists():
-            raise UserError(_("SharePoint export file was not found: %s", export_path))
+            raise UserError(_("Exportný súbor SharePoint sa nenašiel: %s", export_path))
         with export_file.open(encoding="utf-8") as handle:
             payload = json.load(handle)
 
         pages = payload.get("value", payload) if isinstance(payload, dict) else payload
         if not isinstance(pages, list):
-            raise UserError(_("SharePoint export must be a JSON list or an object with a 'value' list."))
+            raise UserError(_("Export SharePoint musí byť JSON zoznam alebo objekt so zoznamom „value“."))
 
         stats = {
             "created": 0,
@@ -641,7 +643,7 @@ class SharePointTeam(models.Model):
         )
 
     def _graph_page_to_knowledge_body(self, page, media_path=False, import_context=False):
-        title = escape(page.get("title") or page.get("name") or _("Untitled"))
+        title = escape(page.get("title") or page.get("name") or _("Bez názvu"))
         parts = [f"<h1>{title}</h1>"]
         metadata = self._graph_page_metadata_html(page)
         if metadata:
@@ -665,14 +667,14 @@ class SharePointTeam(models.Model):
             parts.append(
                 "<blockquote><p>%s</p><ul>%s</ul></blockquote>"
                 % (
-                    escape(_("Some SharePoint blocks could not be converted automatically.")),
+                    escape(_("Niektoré bloky SharePoint sa nepodarilo automaticky skonvertovať.")),
                     "".join(f"<li>{escape(str(item))}</li>" for item in unsupported),
                 )
             )
         if page.get("webUrl"):
             parts.append(
                 '<p><a href="%s" target="_blank" rel="noopener">%s</a></p>'
-                % (escape(page["webUrl"], quote=True), escape(_("Open original SharePoint page")))
+                % (escape(page["webUrl"], quote=True), escape(_("Otvoriť pôvodnú stránku SharePoint")))
             )
         return self._normalize_knowledge_body_html("\n".join(parts), page, import_context=import_context)
 
@@ -808,7 +810,7 @@ class SharePointTeam(models.Model):
                     unsupported.append(
                         webpart.get("webPartType")
                         or webpart.get("@odata.type")
-                        or _("Unsupported web part")
+                        or _("Nepodporovaný webpart")
                     )
             if column_parts:
                 rendered_columns.append((column.get("width") or 12, "\n".join(column_parts)))
@@ -893,7 +895,7 @@ class SharePointTeam(models.Model):
                 links.append((document.access_url, document.name))
             elif url.startswith(("http://", "https://")):
                 links.append((url, Path(url.split("?", 1)[0]).name or url))
-        title = ((webpart.get("data") or {}).get("title") or webpart.get("title") or _("SharePoint content"))
+        title = ((webpart.get("data") or {}).get("title") or webpart.get("title") or _("Obsah SharePoint"))
         if not links:
             return False
         return "<section><h3>%s</h3><ul>%s</ul></section>" % (
@@ -1016,7 +1018,7 @@ class SharePointTeam(models.Model):
         data = webpart.get("data") or {}
         properties = data.get("properties") or {}
         text_by_key = self._graph_processed_values(data, "searchablePlainTexts")
-        title = text_by_key.get("listTitle") or data.get("title") or _("Documents")
+        title = text_by_key.get("listTitle") or data.get("title") or _("Dokumenty")
         page_folder = import_context and import_context.get("page_folder")
         if page_folder:
             return (
@@ -1519,7 +1521,7 @@ class SharePointTeam(models.Model):
     def _get_or_create_graph_page_folder(self, page):
         self.ensure_one()
         source_id = page.get("id") or page.get("webUrl") or page.get("name")
-        title = page.get("title") or Path(page.get("name") or "").stem or _("Untitled")
+        title = page.get("title") or Path(page.get("name") or "").stem or _("Bez názvu")
         Document = self.env["documents.document"].sudo()
         if source_id:
             folder = Document.search([
@@ -1557,7 +1559,7 @@ class SharePointTeam(models.Model):
         return folder
 
     def _graph_page_folder_name(self, title, source_id=False):
-        base_name = str(title or _("Untitled")).strip() or _("Untitled")
+        base_name = str(title or _("Bez názvu")).strip() or _("Bez názvu")
         existing = self.env["documents.document"].sudo().search([
             ("type", "=", "folder"),
             ("folder_id", "=", self.document_folder_id.id),
@@ -1704,17 +1706,19 @@ class SharePointTeam(models.Model):
 
 class SharePointTeamMember(models.Model):
     _name = "sharepoint.team.member"
-    _description = "SharePoint Team Member"
+    _description = "Člen tímu SharePoint"
     _order = "role, user_id"
 
     team_id = fields.Many2one(
         "sharepoint.team",
+        string="Tím",
         required=True,
         ondelete="cascade",
         index=True,
     )
     user_id = fields.Many2one(
         "res.users",
+        string="Používateľ",
         required=True,
         ondelete="cascade",
         index=True,
@@ -1722,25 +1726,28 @@ class SharePointTeamMember(models.Model):
     )
     partner_id = fields.Many2one(
         "res.partner",
+        string="Partner",
         related="user_id.partner_id",
         store=True,
         readonly=True,
     )
     role = fields.Selection(
-        [("owner", "Owner"), ("admin", "Admin"), ("member", "User"), ("visitor", "Visitor")],
+        [("owner", "Vlastník"), ("admin", "Administrátor"), ("member", "Používateľ"), ("visitor", "Návštevník")],
         required=True,
         default="member",
+        string="Rola",
     )
     source = fields.Selection(
-        [("manual", "Manual"), ("hr_employee", "HR Employee")],
+        [("manual", "Manuálne"), ("hr_employee", "HR zamestnanec")],
         required=True,
         default="manual",
         index=True,
+        string="Zdroj",
     )
 
     _unique_team_user = models.Constraint(
         "UNIQUE(team_id, user_id)",
-        "This user is already a member of the team.",
+        "Tento používateľ už je členom tímu.",
     )
 
     @api.model_create_multi

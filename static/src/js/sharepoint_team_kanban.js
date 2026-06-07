@@ -5,6 +5,7 @@ import { kanbanView } from "@web/views/kanban/kanban_view";
 import { KanbanRecord } from "@web/views/kanban/kanban_record";
 import { KanbanRenderer } from "@web/views/kanban/kanban_renderer";
 import { Component, xml } from "@odoo/owl";
+import { _t } from "@web/core/l10n/translation";
 
 const DIALOG_ROLES = new Set(["member", "visitor"]);
 
@@ -13,10 +14,10 @@ class SharePointTeamDialog extends Component {
         <Dialog title="props.teamName" size="'sm'" footer="false">
             <div class="d-flex flex-column gap-2 py-2">
                 <button class="btn btn-primary text-start" t-on-click="onDocuments">
-                    <i class="fa fa-folder-open me-2"/>Documents
+                    <i class="fa fa-folder-open me-2"/><t t-out="documentsLabel"/>
                 </button>
                 <button class="btn btn-secondary text-start" t-on-click="onPages">
-                    <i class="fa fa-book me-2"/>Pages
+                    <i class="fa fa-book me-2"/><t t-out="pagesLabel"/>
                 </button>
             </div>
         </Dialog>
@@ -28,6 +29,14 @@ class SharePointTeamDialog extends Component {
         onPages: Function,
         close: Function,
     };
+
+    get documentsLabel() {
+        return _t("Dokumenty");
+    }
+
+    get pagesLabel() {
+        return _t("Stránky");
+    }
 
     onDocuments() {
         this.props.onDocuments();

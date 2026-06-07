@@ -1,15 +1,15 @@
 {
     "name": "SharePoint",
-    "summary": "Unified team hub for Odoo Documents, Knowledge, and OnlyOffice",
+    "summary": "Jednotné tímové centrum pre Odoo Dokumenty, Znalosti a OnlyOffice",
     "description": """
-SharePoint-style team spaces for Tenenet.
+Tímové priestory v štýle SharePointu pre Tenenet.
 
-Creates team-owned document libraries and Knowledge pages while preserving
-native Odoo Documents, Knowledge, HR document folders, and OnlyOffice editing.
+Vytvára tímové knižnice dokumentov a stránky v Znalostiach, pričom zachováva
+natívne Odoo Dokumenty, Znalosti, HR priečinky dokumentov a úpravy v OnlyOffice.
     """,
     "author": "Tenenet",
     "website": "https://www.tenenet.sk",
-    "category": "Productivity",
+    "category": "Produktivita",
     "version": "19.0.1.5.0",
     "license": "LGPL-3",
     "depends": [

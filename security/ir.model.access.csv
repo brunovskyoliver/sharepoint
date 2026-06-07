@@ -1,5 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_sharepoint_team_user,sharepoint.team.user,model_sharepoint_team,base.group_user,1,1,0,0
-access_sharepoint_team_manager,sharepoint.team.manager,model_sharepoint_team,sharepoint.group_sharepoint_manager,1,1,1,1
-access_sharepoint_team_member_user,sharepoint.team.member.user,model_sharepoint_team_member,base.group_user,1,1,1,1
-access_sharepoint_team_member_manager,sharepoint.team.member.manager,model_sharepoint_team_member,sharepoint.group_sharepoint_manager,1,1,1,1
+access_sharepoint_team_user,sharepoint.tím.používateľ,model_sharepoint_team,base.group_user,1,1,0,0
+access_sharepoint_team_manager,sharepoint.tím.manažér,model_sharepoint_team,sharepoint.group_sharepoint_manager,1,1,1,1
+access_sharepoint_team_member_user,sharepoint.člen_tímu.používateľ,model_sharepoint_team_member,base.group_user,1,1,1,1
+access_sharepoint_team_member_manager,sharepoint.člen_tímu.manažér,model_sharepoint_team_member,sharepoint.group_sharepoint_manager,1,1,1,1
