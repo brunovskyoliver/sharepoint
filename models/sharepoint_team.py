@@ -540,14 +540,26 @@ class SharePointTeam(models.Model):
         self.ensure_one()
         if not self.hr_portal_managed:
             raise UserError(_("Import stránok SharePoint je dostupný iba pre spravovaný tím HR portálu."))
-        return self._import_hr_portal_graph_pages(export_path, media_dir=media_dir)
+        self._sync_hr_portal_employee_visitors()
+        return self.import_graph_site_pages(export_path, media_dir=media_dir)
 
     @api.model
     def import_hr_portal_graph_pages(self, export_path, media_dir=False):
         team = self._get_or_create_hr_portal_team()
-        return team._import_hr_portal_graph_pages(export_path, media_dir=media_dir)
+        team._sync_hr_portal_employee_visitors()
+        return team.import_graph_site_pages(export_path, media_dir=media_dir)
+
+    def import_graph_site_pages(self, export_path, media_dir=False):
+        """Import a saved Microsoft Graph site export into this managed team."""
+        self.ensure_one()
+        return self._import_graph_site_pages(export_path, media_dir=media_dir)
 
     def _import_hr_portal_graph_pages(self, export_path, media_dir=False):
+        """Compatibility wrapper for callers of the original HR-specific API."""
+        self.ensure_one()
+        return self._import_graph_site_pages(export_path, media_dir=media_dir)
+
+    def _import_graph_site_pages(self, export_path, media_dir=False):
         self.ensure_one()
         self._ensure_team_resources()
         export_file = Path(export_path).expanduser()
@@ -584,6 +596,7 @@ class SharePointTeam(models.Model):
                 continue
             article = Article.with_context(active_test=False).search([
                 ("sharepoint_source_id", "=", source_id),
+                ("parent_id", "=", self.knowledge_article_id.id),
             ], limit=1)
             document_context = self._prepare_graph_page_document_context(
                 page,

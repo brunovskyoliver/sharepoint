@@ -10,6 +10,6 @@ class KnowledgeArticle(models.Model):
     sharepoint_source_author = fields.Char(string="Autor zdroja SharePoint", copy=False)
 
     _unique_sharepoint_source_id = models.Constraint(
-        "UNIQUE(sharepoint_source_id)",
-        "Stránka SharePoint s týmto ID zdroja už bola importovaná.",
+        "UNIQUE(parent_id, sharepoint_source_id)",
+        "Stránka SharePoint s týmto ID zdroja už bola importovaná do tohto tímu.",
     )

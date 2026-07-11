@@ -128,6 +128,30 @@ class TestSharePointTeam(TransactionCase):
 
         self.assertNotIn(employee_user, team.member_ids.user_id)
 
+    def test_hr_portal_import_wrapper_refreshes_employee_visitors(self):
+        employee_user = self._create_user("sp.import.employee")
+        self.env["hr.employee"].create({
+            "name": "Import Employee",
+            "user_id": employee_user.id,
+            "work_email": employee_user.email,
+        })
+        team = self.env["sharepoint.team"].sudo()._get_or_create_hr_portal_team()
+        team.member_ids.filtered(lambda rec: rec.user_id == employee_user).unlink()
+        team.invalidate_recordset(["member_ids"])
+        self.assertNotIn(employee_user, team.member_ids.user_id)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_file = f"{tmpdir}/pages.json"
+            with open(export_file, "w", encoding="utf-8") as handle:
+                json.dump({"value": []}, handle)
+            stats = self.env["sharepoint.team"].sudo().import_hr_portal_graph_pages(export_file)
+
+        team.invalidate_recordset(["member_ids"])
+        member = team.member_ids.filtered(lambda rec: rec.user_id == employee_user)
+        self.assertEqual(stats["created"], 0)
+        self.assertEqual(member.role, "visitor")
+        self.assertEqual(member.source, "hr_employee")
+
     def test_documents_user_defaults_are_backfilled_for_internal_users(self):
         user = self._create_user("sp.default.documents")
         documents_user_group = self.env.ref("documents.group_documents_user")
@@ -476,6 +500,45 @@ class TestSharePointTeam(TransactionCase):
         self.assertEqual(article.sharepoint_source_author, "HR Team")
         self.assertEqual(len(benefits_folder), 1)
         self.assertEqual(len(document), 1)
+
+    def test_generic_graph_import_scopes_source_pages_to_target_team(self):
+        first_team = self.env["sharepoint.team"].create({"name": "First managed site"})
+        second_team = self.env["sharepoint.team"].create({"name": "Second managed site"})
+        first_article = self.env["knowledge.article"].sudo().create({
+            "name": "Original first-site page",
+            "body": "<p>Keep this content.</p>",
+            "parent_id": first_team.knowledge_article_id.id,
+            "internal_permission": False,
+            "is_desynchronized": False,
+            "sharepoint_source_id": "shared-source-id",
+        })
+        payload = {
+            "value": [{
+                "id": "shared-source-id",
+                "name": "second.aspx",
+                "title": "Second-site page",
+                "description": "Imported into the second team only.",
+                "canvasLayout": {"horizontalSections": []},
+            }],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_file = f"{tmpdir}/pages.json"
+            with open(export_file, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            stats = second_team.import_graph_site_pages(export_file)
+
+        second_article = self.env["knowledge.article"].sudo().search([
+            ("parent_id", "=", second_team.knowledge_article_id.id),
+            ("sharepoint_source_id", "=", "shared-source-id"),
+        ])
+        first_article.invalidate_recordset(["name", "body", "parent_id"])
+        self.assertEqual(stats["created"], 1)
+        self.assertEqual(len(second_article), 1)
+        self.assertEqual(second_article.name, "Second-site page")
+        self.assertEqual(first_article.name, "Original first-site page")
+        self.assertEqual(first_article.parent_id, first_team.knowledge_article_id)
+        self.assertIn("Keep this content", first_article.body)
 
     def test_hr_portal_graph_document_import_groups_files_by_page(self):
         team = self.env["sharepoint.team"].sudo()._get_or_create_hr_portal_team()
