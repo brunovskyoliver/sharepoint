@@ -10,7 +10,7 @@ natívne Odoo Dokumenty, Znalosti, HR priečinky dokumentov a úpravy v OnlyOffi
     "author": "Tenenet",
     "website": "https://www.tenenet.sk",
     "category": "Produktivita",
-    "version": "19.0.1.6.0",
+    "version": "19.0.1.8.0",
     "license": "LGPL-3",
     "depends": [
         "documents",
@@ -32,9 +32,13 @@ natívne Odoo Dokumenty, Znalosti, HR priečinky dokumentov a úpravy v OnlyOffi
         "web.assets_backend": [
             ("after", "documents/static/src/core/document_client_action.js", "sharepoint/static/src/js/tenenet_documents_action_preference.js"),
             ("after", "documents/static/src/views/list/documents_list_renderer.js", "sharepoint/static/src/js/tenenet_documents_folder_row_click.js"),
+            ("after", "onlyoffice_odoo_documents/static/src/documents_view/kanban/documents_kanban_controller.js", "sharepoint/static/src/js/tenenet_documents_onlyoffice_bridge.js"),
             ("after", "documents/static/src/views/search/documents_search_panel.js", "sharepoint/static/src/js/tenenet_documents_search_panel_guard.js"),
             ("after", "web/static/src/views/kanban/kanban_record.js", "sharepoint/static/src/js/sharepoint_team_kanban.js"),
             "sharepoint/static/src/scss/sharepoint.scss",
+        ],
+        "web.assets_unit_tests": [
+            "sharepoint/static/tests/documents_interaction.test.js",
         ],
     },
     "post_init_hook": "post_init_hook",

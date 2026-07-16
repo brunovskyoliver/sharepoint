@@ -5,6 +5,25 @@ from odoo.fields import Domain
 class DocumentsDocument(models.Model):
     _inherit = "documents.document"
 
+    _SHAREPOINT_SLOVAK_SEED_FOLDER_NAMES = {
+        "documents.document_inbox_folder": ("Inbox", "Doručené"),
+        "documents.document_finance_folder": ("Finance", "Financie"),
+        "documents.document_finance_social_folder": ("Social", "Sociálne"),
+        "documents.document_finance_taxes_folder": ("Taxes", "Dane"),
+        "documents.document_finance_annual_closing_folder": (
+            "Annual Closing",
+            "Ročná uzávierka",
+        ),
+        "documents.document_legal_folder": ("Legal", "Právne"),
+        "documents.document_insurances_folder": ("Insurances", "Poistenia"),
+        "documents.document_loans_folder": ("Loans", "Úvery"),
+        "documents.document_registrations_folder": (
+            "Registrations",
+            "Registrácie",
+        ),
+        "documents.document_contracts_folder": ("Contracts", "Zmluvy"),
+    }
+
     sharepoint_drive_id = fields.Char(string="ID SharePoint disku", copy=False, index=True)
     sharepoint_drive_item_id = fields.Char(string="ID položky SharePoint disku", copy=False, index=True)
     sharepoint_source_url = fields.Char(string="URL zdroja SharePoint", copy=False)
@@ -87,6 +106,29 @@ class DocumentsDocument(models.Model):
             ("id", "child_of", team.document_folder_id.id),
         ])
         return set(folders.ids)
+
+    @api.model
+    def _sharepoint_localize_generated_document_names(self):
+        for xml_id, (english_name, slovak_name) in (
+            self._SHAREPOINT_SLOVAK_SEED_FOLDER_NAMES.items()
+        ):
+            folder = self.env.ref(xml_id, raise_if_not_found=False)
+            if not folder:
+                continue
+            english_folder = folder.sudo().with_context(lang="en_US")
+            slovak_folder = folder.sudo().with_context(lang="sk_SK")
+            if english_folder.name == english_name and slovak_folder.name == english_name:
+                slovak_folder.name = slovak_name
+
+        for company in self.env["res.company"].sudo().search([
+            ("documents_employee_folder_id", "!=", False),
+        ]):
+            folder = company.documents_employee_folder_id.sudo()
+            english_name = folder.with_context(lang="en_US").name
+            slovak_folder = folder.with_context(lang="sk_SK")
+            if english_name.startswith("Employees - ") and slovak_folder.name == english_name:
+                slovak_folder.name = f"Zamestnanci – {company.name}"
+        return True
 
     @api.model
     def _sharepoint_ensure_documents_user_defaults(self):

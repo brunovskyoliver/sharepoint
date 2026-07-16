@@ -162,6 +162,55 @@ class TestSharePointTeam(TransactionCase):
 
         self.assertIn(documents_user_group, user.all_group_ids)
 
+    def test_generated_document_names_are_localized_safely(self):
+        Document = self.env["documents.document"].sudo()
+        inbox = self.env.ref("documents.document_inbox_folder")
+        finance = self.env.ref("documents.document_finance_folder")
+        inbox.with_context(lang="en_US").name = "Inbox"
+        inbox.with_context(lang="sk_SK").name = "Inbox"
+        finance.with_context(lang="en_US").name = "Finance"
+        finance.with_context(lang="sk_SK").name = "Vlastné financie"
+        custom_inbox = Document.create({
+            "name": "Inbox",
+            "type": "folder",
+            "access_internal": "edit",
+        })
+        company = self.env["res.company"].with_context(lang="en_US").create({
+            "name": "Localization Company",
+        })
+        employee_folder = company.documents_employee_folder_id
+        self.assertEqual(
+            employee_folder.with_context(lang="en_US").name,
+            "Employees - Localization Company",
+        )
+
+        Document._sharepoint_localize_generated_document_names()
+        Document._sharepoint_localize_generated_document_names()
+
+        self.assertEqual(inbox.with_context(lang="en_US").name, "Inbox")
+        self.assertEqual(inbox.with_context(lang="sk_SK").name, "Doručené")
+        self.assertEqual(finance.with_context(lang="sk_SK").name, "Vlastné financie")
+        self.assertEqual(custom_inbox.name, "Inbox")
+        self.assertEqual(
+            employee_folder.with_context(lang="en_US").name,
+            "Employees - Localization Company",
+        )
+        self.assertEqual(
+            employee_folder.with_context(lang="sk_SK").name,
+            "Zamestnanci – Localization Company",
+        )
+
+    def test_documents_search_panel_has_slovak_special_roots(self):
+        values = self.env["documents.document"].with_context(
+            lang="sk_SK"
+        ).search_panel_select_range("user_folder_id")["values"]
+        values_by_id = {value["id"]: value["display_name"] for value in values}
+
+        self.assertEqual(values_by_id["MY"], "Moje úložisko")
+        self.assertEqual(values_by_id["SHARED"], "Zdieľané so mnou")
+        self.assertEqual(values_by_id["RECENT"], "Nedávne")
+        self.assertEqual(values_by_id["TRASH"], "Kôš")
+
     def test_employee_documents_search_panel_is_limited_to_hr_portal(self):
         employee_user = self._create_user("sp.panel.employee")
         employee_user.write({
@@ -175,9 +224,9 @@ class TestSharePointTeam(TransactionCase):
         team = self.env["sharepoint.team"].sudo()._get_or_create_hr_portal_team()
         team._sync_hr_portal_employee_visitors()
 
-        values = self.env["documents.document"].with_user(employee_user).search_panel_select_range(
-            "user_folder_id"
-        )["values"]
+        values = self.env["documents.document"].with_user(employee_user).with_context(
+            lang="en_US"
+        ).search_panel_select_range("user_folder_id")["values"]
         values_by_name = {value["display_name"]: value for value in values}
 
         self.assertEqual(values_by_name["TENENET o.z."]["id"], "COMPANY")

@@ -1,20 +1,18 @@
 import { registry } from "@web/core/registry";
-import { user } from "@web/core/user";
 
-function getDocumentsActionContext(action, options = {}, isDocumentsManager = false) {
-    const explicitContext = options.additionalContext || {};
+export function getDocumentsActionContext(action, options = {}) {
     const context = {
         ...action.context,
-        ...explicitContext,
+        ...(options.additionalContext || {}),
     };
-    const hasExplicitFolder =
+    const hasSpecificTarget =
         "searchpanel_default_user_folder_id" in context ||
         "documents_unique_folder_id" in context ||
         "documents_init_document_id" in context;
 
-    if (context.documents_init_folder_id === "COMPANY" && hasExplicitFolder) {
+    if (hasSpecificTarget && context.documents_init_folder_id === "MY") {
         delete context.documents_init_folder_id;
-    } else if (context.documents_init_folder_id === "COMPANY" && !isDocumentsManager) {
+    } else if (!("documents_init_folder_id" in context) && !hasSpecificTarget) {
         context.documents_init_folder_id = "MY";
     }
     return context;
@@ -22,12 +20,11 @@ function getDocumentsActionContext(action, options = {}, isDocumentsManager = fa
 
 async function documentActionPreference(env, action, options = {}) {
     const nextAction = await env.services.action.loadAction("documents.document_action");
-    const isDocumentsManager = await user.hasGroup("documents.group_documents_manager");
 
     return env.services.action.doAction(
         {
             ...nextAction,
-            context: getDocumentsActionContext(action, options, isDocumentsManager),
+            context: getDocumentsActionContext(action, options),
             domain: action.domain,
         },
         {

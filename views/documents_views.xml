@@ -1,6 +1,6 @@
 <odoo>
     <record id="documents.document_action_preference" model="ir.actions.client">
-        <field name="context">{'documents_init_folder_id': 'COMPANY'}</field>
+        <field name="context">{'documents_init_folder_id': 'MY'}</field>
     </record>
 
     <record id="documents.document_action" model="ir.actions.act_window">
