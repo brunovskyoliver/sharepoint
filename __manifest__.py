@@ -10,7 +10,7 @@ natívne Odoo Dokumenty, Znalosti, HR priečinky dokumentov a úpravy v OnlyOffi
     "author": "Tenenet",
     "website": "https://www.tenenet.sk",
     "category": "Produktivita",
-    "version": "19.0.1.8.0",
+    "version": "19.0.1.9.0",
     "license": "LGPL-3",
     "depends": [
         "documents",

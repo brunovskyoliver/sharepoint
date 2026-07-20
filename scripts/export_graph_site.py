@@ -23,6 +23,7 @@ from urllib.request import Request, urlopen
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 DOCUMENT_LIBRARY_WEBPART = "f92bf067-bc19-489e-a556-7fe95f508720"
 BANNER_WEBPART = "cbe7b0a9-3504-44dd-a3a3-0e5cacd07788"
+MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
 
 
 class GraphClient:
@@ -46,9 +47,17 @@ class GraphClient:
             next_url = payload.get("@odata.nextLink")
         return values
 
-    def download(self, url, target):
+    def download(self, url, target, max_bytes=MAX_DOWNLOAD_BYTES):
         with urlopen(self.request(url)) as response:
-            target.write_bytes(response.read())
+            content_length = response.headers.get("Content-Length")
+            size = int(content_length) if content_length and content_length.isdigit() else None
+            if size is not None and size > max_bytes:
+                return {"downloaded": False, "size": size}
+            content = response.read(max_bytes + 1)
+            if len(content) > max_bytes:
+                return {"downloaded": False, "size": len(content)}
+            target.write_bytes(content)
+            return {"downloaded": True, "size": size or len(content)}
 
 
 def token_from_args(args):
@@ -275,7 +284,50 @@ def discover_files(pages, drive_items):
     return selected, external_urls
 
 
-def download_selected_files(client, selected, media_dir):
+def discover_folder_files(page, drive_items, folder_url):
+    folder_path = path_key(folder_url).rstrip("/")
+    selected = {}
+    for item in drive_items:
+        if item.get("folder"):
+            continue
+        paths = {path_key(url) for url in item_urls(item)}
+        if not any(path == folder_path or path.startswith(folder_path + "/") for path in paths):
+            continue
+        key = (item.get("driveId") or (item.get("parentReference") or {}).get("driveId"), item.get("id"))
+        selected[key] = {
+            "item": item,
+            "sourcePageIds": {page["id"]},
+            "discoveryReasons": {"requested_folder"},
+        }
+    return selected
+
+
+def synthetic_folder_page(folder_url, title):
+    return {
+        "id": f"folder:{url_key(folder_url)}",
+        "name": title,
+        "title": title,
+        "webUrl": folder_url,
+        "description": f"Dokumenty importované zo SharePoint priečinka {title}.",
+        "canvasLayout": {
+            "horizontalSections": [{
+                "columns": [{
+                    "width": 12,
+                    "webparts": [{
+                        "@odata.type": "#microsoft.graph.standardWebPart",
+                        "webPartType": DOCUMENT_LIBRARY_WEBPART,
+                        "data": {
+                            "title": title,
+                            "properties": {"selectedListUrl": folder_url},
+                        },
+                    }],
+                }],
+            }],
+        },
+    }
+
+
+def download_selected_files(client, selected, media_dir, max_bytes=MAX_DOWNLOAD_BYTES):
     media_dir.mkdir(parents=True, exist_ok=True)
     exported = []
     for details in selected.values():
@@ -283,17 +335,34 @@ def download_selected_files(client, selected, media_dir):
         source_url = item.get("webUrl") or item.get("@microsoft.graph.downloadUrl") or item["name"]
         local_name = local_filename_for_url(source_url)
         target = media_dir / local_name
-        if not target.exists():
-            drive_id = item.get("driveId") or (item.get("parentReference") or {}).get("driveId")
-            client.download(f"/drives/{drive_id}/items/{item['id']}/content", target)
-        item["localFileName"] = local_name
+        size = item.get("size")
+        result = {"downloaded": False, "size": size}
+        if not size or size <= max_bytes:
+            if target.exists() and target.stat().st_size <= max_bytes:
+                result = {"downloaded": True, "size": target.stat().st_size}
+            else:
+                drive_id = item.get("driveId") or (item.get("parentReference") or {}).get("driveId")
+                result = client.download(
+                    f"/drives/{drive_id}/items/{item['id']}/content",
+                    target,
+                    max_bytes=max_bytes,
+                )
+        if result["downloaded"]:
+            item["localFileName"] = local_name
+        else:
+            item.update({
+                "downloadSkipped": "size_limit",
+                "downloadLimitBytes": max_bytes,
+                "placeholder": True,
+                "size": result.get("size") or size,
+            })
         item["sourcePageIds"] = sorted(details["sourcePageIds"])
         item["discoveryReasons"] = sorted(details["discoveryReasons"])
         exported.append(item)
     return exported
 
 
-def download_external_urls(client, external_urls, media_dir):
+def download_external_urls(client, external_urls, media_dir, max_bytes=MAX_DOWNLOAD_BYTES):
     exported = []
     for url, page_id in external_urls.items():
         name = Path(urlsplit(url.split("?", 1)[0]).path).name
@@ -301,19 +370,79 @@ def download_external_urls(client, external_urls, media_dir):
             continue
         local_name = local_filename_for_url(url)
         target = media_dir / local_name
-        if not target.exists():
+        result = {"downloaded": True, "size": target.stat().st_size} if target.exists() else None
+        if result is None or result["size"] > max_bytes:
             try:
-                client.download(url, target)
+                result = client.download(url, target, max_bytes=max_bytes)
             except HTTPError:
                 continue
-        exported.append({
+        item = {
             "url": url,
             "name": name,
-            "localFileName": local_name,
             "sourcePageIds": [page_id],
             "mimetype": mimetypes.guess_type(name)[0],
-        })
+        }
+        if result["downloaded"]:
+            item["localFileName"] = local_name
+        else:
+            item.update({
+                "downloadSkipped": "size_limit",
+                "downloadLimitBytes": max_bytes,
+                "placeholder": True,
+                "size": result.get("size"),
+            })
+        exported.append(item)
     return exported
+
+
+def export_site(
+    client,
+    site_hostname,
+    site_path,
+    output,
+    media_dir,
+    folder_url=None,
+    folder_title=None,
+    max_bytes=MAX_DOWNLOAD_BYTES,
+):
+    site = client.get_json(f"/sites/{site_hostname}:{quote(site_path, safe='/')}")
+    drive_items = []
+    for drive in client.get_all(f"/sites/{site['id']}/drives"):
+        drive_items.extend(collect_drive_items(client, drive["id"]))
+
+    if folder_url:
+        page = synthetic_folder_page(folder_url, folder_title or unquote(Path(urlsplit(folder_url).path).name))
+        pages = [page]
+        selected = discover_folder_files(page, drive_items, folder_url)
+        external_urls = {}
+    else:
+        pages = client.get_all(f"/sites/{site['id']}/pages/microsoft.graph.sitePage?$expand=canvasLayout")
+        selected, external_urls = discover_files(pages, drive_items)
+
+    media_dir = Path(media_dir)
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    exported_items = download_selected_files(client, selected, media_dir, max_bytes=max_bytes)
+    external_downloads = download_external_urls(client, external_urls, media_dir, max_bytes=max_bytes)
+    payload = {
+        "site": site,
+        "value": pages,
+        "driveItems": exported_items,
+        "referencedUrls": external_downloads,
+        "extraction": {
+            "siteHostname": site_hostname,
+            "sitePath": site_path,
+            "folderUrl": folder_url,
+            "mediaDir": str(media_dir),
+            "maxDownloadBytes": max_bytes,
+            "downloadedDriveItems": sum("localFileName" in item for item in exported_items),
+            "downloadedReferencedUrls": sum("localFileName" in item for item in external_downloads),
+            "skippedOversize": sum(item.get("downloadSkipped") == "size_limit" for item in [*exported_items, *external_downloads]),
+        },
+    }
+    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Exported {len(pages)} pages and {len(exported_items)} drive files to {output}", flush=True)
+    return payload
 
 
 def parse_args():
@@ -322,38 +451,30 @@ def parse_args():
     parser.add_argument("--site-path", required=True, help="Example: /sites/HRportal")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--media-dir", required=True, type=Path)
+    parser.add_argument("--folder-url", help="Export only files below this SharePoint folder URL")
+    parser.add_argument("--folder-title", help="Knowledge page title for a folder-only export")
+    parser.add_argument(
+        "--max-file-size-mb",
+        type=int,
+        default=10,
+        help="Skip local download above this size and keep source placeholders (default: 10)",
+    )
     parser.add_argument("--token-command", help="Shell command that prints a Graph access token")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    client = GraphClient(token_from_args(args))
-    site = client.get_json(f"/sites/{args.site_hostname}:{quote(args.site_path, safe='/')}")
-    pages = client.get_all(f"/sites/{site['id']}/pages/microsoft.graph.sitePage?$expand=canvasLayout")
-
-    drive_items = []
-    for drive in client.get_all(f"/sites/{site['id']}/drives"):
-        drive_items.extend(collect_drive_items(client, drive["id"]))
-
-    selected, external_urls = discover_files(pages, drive_items)
-    exported_items = download_selected_files(client, selected, args.media_dir)
-    external_downloads = download_external_urls(client, external_urls, args.media_dir)
-    payload = {
-        "site": site,
-        "value": pages,
-        "driveItems": exported_items,
-        "referencedUrls": external_downloads,
-        "extraction": {
-            "siteHostname": args.site_hostname,
-            "sitePath": args.site_path,
-            "mediaDir": str(args.media_dir),
-            "downloadedDriveItems": len(exported_items),
-            "downloadedReferencedUrls": len(external_downloads),
-        },
-    }
-    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Exported {len(pages)} pages and {len(exported_items)} drive files to {args.output}")
+    export_site(
+        GraphClient(token_from_args(args)),
+        args.site_hostname,
+        args.site_path,
+        args.output,
+        args.media_dir,
+        folder_url=args.folder_url,
+        folder_title=args.folder_title,
+        max_bytes=args.max_file_size_mb * 1024 * 1024,
+    )
 
 
 if __name__ == "__main__":

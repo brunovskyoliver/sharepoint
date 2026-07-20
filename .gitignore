@@ -10,5 +10,5 @@ venv/
 
 *.log
 
-hrportal-pages.json
-hrportal-media/
+*-pages.json
+*-media/

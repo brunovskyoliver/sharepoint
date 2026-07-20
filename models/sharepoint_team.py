@@ -27,6 +27,7 @@ class SharePointTeam(models.Model):
     _GRAPH_BANNER_WEBPART_TYPE = "cbe7b0a9-3504-44dd-a3a3-0e5cacd07788"
 
     name = fields.Char(string="Názov", required=True, tracking=True)
+    sharepoint_source_key = fields.Char(string="Kľúč zdroja SharePoint", copy=False, index=True)
     active = fields.Boolean(string="Aktívne", default=True, tracking=True)
     description = fields.Text(string="Popis")
     company_id = fields.Many2one(
@@ -107,6 +108,10 @@ class SharePointTeam(models.Model):
     _unique_name_company = models.Constraint(
         "UNIQUE(name, company_id)",
         "Tím SharePoint s týmto názvom už v tejto spoločnosti existuje.",
+    )
+    _unique_source_key_company = models.Constraint(
+        "UNIQUE(sharepoint_source_key, company_id)",
+        "Tento zdroj SharePoint už má tím v tejto spoločnosti.",
     )
 
     @api.depends("member_ids.user_id", "member_ids.role")
@@ -579,6 +584,7 @@ class SharePointTeam(models.Model):
             "documents_created": 0,
             "documents_updated": 0,
             "documents_unchanged": 0,
+            "documents_placeholders": 0,
             "documents_stale": 0,
             "stale_documents": [],
         }
@@ -1164,6 +1170,8 @@ class SharePointTeam(models.Model):
                 stats=stats,
             )
             if not document:
+                if stats is not None and (entry.get("item") or {}).get("downloadSkipped"):
+                    stats["documents_placeholders"] += 1
                 continue
             context["page_folder"] = document.folder_id
             identity_key = self._graph_drive_item_identity_key(entry.get("item"))
@@ -1455,6 +1463,13 @@ class SharePointTeam(models.Model):
         source_item=False,
         stats=None,
     ):
+        if isinstance(source_item, dict) and source_item.get("downloadSkipped"):
+            return self._get_or_create_imported_document_placeholder(
+                url,
+                page=page,
+                source_item=source_item,
+                stats=stats,
+            )
         if not media_path:
             return False
         media_path = Path(media_path).expanduser()
@@ -1474,6 +1489,15 @@ class SharePointTeam(models.Model):
                 ("sharepoint_drive_item_id", "=", drive_item_id),
                 ("type", "!=", "folder"),
             ], limit=1)
+            if existing and not Document.search([
+                ("id", "=", existing.id),
+                ("id", "child_of", self.document_folder_id.id),
+            ], limit=1):
+                raise UserError(_(
+                    "Položka SharePoint %(drive)s/%(item)s už patrí do iného tímu.",
+                    drive=drive_id,
+                    item=drive_item_id,
+                ))
         if not existing:
             search_folder_ids = [destination_folder.id]
             if destination_folder != self.document_folder_id:
@@ -1494,6 +1518,8 @@ class SharePointTeam(models.Model):
             vals = {
                 **metadata_vals,
                 "name": filename,
+                "type": "binary",
+                "url": False,
                 "folder_id": destination_folder.id,
                 "company_id": self.company_id.id,
             }
@@ -1518,6 +1544,59 @@ class SharePointTeam(models.Model):
             "company_id": self.company_id.id,
             "datas": base64.b64encode(local_file.read_bytes()),
             "mimetype": mimetype,
+            "access_internal": "none",
+            "access_via_link": "none",
+            "is_access_via_link_hidden": True,
+        })
+
+    def _get_or_create_imported_document_placeholder(self, url, page=False, source_item=False, stats=None):
+        filename = self._graph_drive_item_filename(source_item) or self._local_media_filename(url)
+        source_url = self._graph_drive_item_url(source_item) or url
+        if not filename or not source_url:
+            return False
+        Document = self.env["documents.document"].sudo()
+        destination_folder = self._get_graph_import_folder(filename, page=page)
+        drive_id, drive_item_id = self._graph_drive_item_identity(source_item)
+        existing = Document.search([
+            ("sharepoint_drive_id", "=", drive_id),
+            ("sharepoint_drive_item_id", "=", drive_item_id),
+            ("type", "!=", "folder"),
+        ], limit=1) if drive_id and drive_item_id else self.env["documents.document"]
+        if existing and not Document.search([
+            ("id", "=", existing.id),
+            ("id", "child_of", self.document_folder_id.id),
+        ], limit=1):
+            raise UserError(_(
+                "Položka SharePoint %(drive)s/%(item)s už patrí do iného tímu.",
+                drive=drive_id,
+                item=drive_item_id,
+            ))
+        metadata_vals = self._graph_document_metadata_vals(
+            filename,
+            source_url,
+            page=page,
+            source_item=source_item,
+        )
+        if stats is not None:
+            stats["documents_placeholders"] += 1
+        if existing:
+            vals = {
+                **metadata_vals,
+                "name": filename,
+                "folder_id": destination_folder.id,
+                "company_id": self.company_id.id,
+            }
+            if existing.type == "url":
+                vals["url"] = source_url
+            existing.write(vals)
+            return existing
+        return Document.create({
+            **metadata_vals,
+            "name": filename,
+            "type": "url",
+            "url": source_url,
+            "folder_id": destination_folder.id,
+            "company_id": self.company_id.id,
             "access_internal": "none",
             "access_via_link": "none",
             "is_access_via_link_hidden": True,
@@ -1605,6 +1684,8 @@ class SharePointTeam(models.Model):
         return vals
 
     def _graph_document_content_changed(self, document, source_item=False):
+        if document.type != "binary":
+            return True
         if not source_item:
             return False
         source_etag = source_item.get("eTag") or source_item.get("@odata.etag")

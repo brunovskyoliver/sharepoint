@@ -4,6 +4,7 @@ import tempfile
 from unittest.mock import patch
 
 from odoo import Command, fields
+from odoo.exceptions import UserError
 from odoo.addons.tenenet_projects.models.tenenet_employee_evaluation import TenenetEmployeeEvaluation
 from odoo.tests import TransactionCase, tagged
 from odoo.tools import file_open
@@ -588,6 +589,86 @@ class TestSharePointTeam(TransactionCase):
         self.assertEqual(first_article.name, "Original first-site page")
         self.assertEqual(first_article.parent_id, first_team.knowledge_article_id)
         self.assertIn("Keep this content", first_article.body)
+
+    def test_graph_document_identity_cannot_move_between_teams(self):
+        first_team = self.env["sharepoint.team"].create({"name": "First document site"})
+        second_team = self.env["sharepoint.team"].create({"name": "Second document site"})
+        source_item = {
+            "id": "shared-item",
+            "driveId": "shared-drive",
+            "name": "policy.pdf",
+            "eTag": "etag-1",
+            "webUrl": "https://example.com/policy.pdf",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(f"{tmpdir}/policy.pdf", "wb") as handle:
+                handle.write(b"%PDF-1.4\n")
+            document = first_team._get_or_create_imported_document(
+                source_item["webUrl"],
+                media_path=tmpdir,
+                source_item=source_item,
+            )
+            with self.assertRaises(UserError):
+                second_team._get_or_create_imported_document(
+                    source_item["webUrl"],
+                    media_path=tmpdir,
+                    source_item=source_item,
+                )
+
+        self.assertEqual(document.folder_id, first_team.document_folder_id)
+
+    def test_oversize_graph_document_stays_as_source_placeholder(self):
+        team = self.env["sharepoint.team"].create({"name": "Placeholder site"})
+        source_url = "https://example.com/large-policy.pdf"
+        payload = {
+            "value": [{
+                "id": "placeholder-page",
+                "name": "Placeholder.aspx",
+                "title": "Placeholder",
+                "webUrl": "https://example.com/Placeholder.aspx",
+                "canvasLayout": {
+                    "horizontalSections": [{
+                        "columns": [{
+                            "webparts": [{
+                                "@odata.type": "#microsoft.graph.textWebPart",
+                                "innerHtml": f'<p><a href="{source_url}">Large policy</a></p>',
+                            }],
+                        }],
+                    }],
+                },
+            }],
+            "driveItems": [{
+                "id": "large-policy",
+                "driveId": "placeholder-drive",
+                "name": "large-policy.pdf",
+                "webUrl": source_url,
+                "size": 11 * 1024 * 1024,
+                "localFileName": "large-policy.pdf",
+                "downloadSkipped": "size_limit",
+                "placeholder": True,
+            }],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_file = f"{tmpdir}/pages.json"
+            with open(f"{tmpdir}/large-policy.pdf", "wb") as handle:
+                handle.write(b"must not import")
+            with open(export_file, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            stats = team.import_graph_site_pages(export_file, media_dir=tmpdir)
+
+        article = self.env["knowledge.article"].sudo().search([
+            ("parent_id", "=", team.knowledge_article_id.id),
+            ("sharepoint_source_id", "=", "placeholder-page"),
+        ], limit=1)
+        document = self.env["documents.document"].sudo().search([
+            ("sharepoint_drive_item_id", "=", "large-policy"),
+        ])
+        self.assertEqual(stats["documents_placeholders"], 1)
+        self.assertEqual(document.type, "url")
+        self.assertEqual(document.url, source_url)
+        self.assertIn(document.access_url, article.body)
 
     def test_hr_portal_graph_document_import_groups_files_by_page(self):
         team = self.env["sharepoint.team"].sudo()._get_or_create_hr_portal_team()
