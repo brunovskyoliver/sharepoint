@@ -26,6 +26,47 @@ class TestSharePointTeam(TransactionCase):
             "group_ids": [Command.set([self.env.ref("base.group_user").id])],
         })
 
+    def test_removes_stock_helpdesk_knowledge_article(self):
+        xmlid = "website_helpdesk_knowledge.helpdesk_knwoledge_article_help"
+        data = self.env["ir.model.data"].sudo().search([
+            ("module", "=", "website_helpdesk_knowledge"),
+            ("name", "=", "helpdesk_knwoledge_article_help"),
+            ("model", "=", "knowledge.article"),
+        ], limit=1)
+        article = self.env["knowledge.article"].sudo().create({"name": "Help"})
+        data.write({"res_id": article.id})
+
+        self.env["knowledge.article"]._sharepoint_remove_helpdesk_help_article()
+
+        self.assertFalse(article.exists())
+        data = self.env["ir.model.data"].sudo().search([
+            ("module", "=", "website_helpdesk_knowledge"),
+            ("name", "=", "helpdesk_knwoledge_article_help"),
+        ], limit=1)
+        self.assertEqual(data.complete_name, xmlid)
+        self.assertFalse(self.env["knowledge.article"].browse(data.res_id).exists())
+
+    def test_removes_and_stops_generating_knowledge_welcome_articles(self):
+        article = self.env["knowledge.article"].sudo().create({
+            "name": "Vitajte Test",
+            "icon": "👋",
+            "body": "<p>Táto súkromná stránka je priestor, kde si môžete Knowledge vyskúšať.</p>",
+            "internal_permission": "none",
+            "article_member_ids": [Command.create({
+                "partner_id": self.owner.partner_id.id,
+                "permission": "write",
+            })],
+        })
+
+        self.env["knowledge.article"]._sharepoint_remove_knowledge_welcome_articles()
+
+        self.assertFalse(article.exists())
+        user = self._create_user("sp.no_knowledge_welcome")
+        self.assertFalse(self.env["knowledge.article.favorite"].search([
+            ("user_id", "=", user.id),
+            ("article_id.icon", "=", "👋"),
+        ]))
+
     def test_team_creation_creates_native_resources_and_access(self):
         team = self.env["sharepoint.team"].create({
             "name": "Operations",
@@ -56,6 +97,34 @@ class TestSharePointTeam(TransactionCase):
         self.assertEqual(page_members[self.owner.partner_id], "write")
         self.assertEqual(page_members[self.member.partner_id], "write")
         self.assertEqual(page_members[self.visitor.partner_id], "read")
+
+    def test_team_document_access_syncs_onlyoffice_roles_to_imported_files(self):
+        team = self.env["sharepoint.team"].create({
+            "name": "OnlyOffice team",
+            "member_ids": [
+                Command.create({"user_id": self.owner.id, "role": "owner"}),
+                Command.create({"user_id": self.member.id, "role": "member"}),
+                Command.create({"user_id": self.visitor.id, "role": "visitor"}),
+            ],
+        })
+        document = self.env["documents.document"].sudo().create({
+            "name": "Team document.docx",
+            "type": "binary",
+            "folder_id": team.document_folder_id.id,
+            "datas": base64.b64encode(b"test"),
+        })
+
+        team._sync_document_access()
+
+        access_by_partner = {
+            access.user_id: access.role
+            for access in self.env["onlyoffice.odoo.documents.access.user"].search([
+                ("document_id", "=", document.id),
+            ])
+        }
+        self.assertEqual(access_by_partner[self.owner.partner_id], "edit")
+        self.assertEqual(access_by_partner[self.member.partner_id], "edit")
+        self.assertEqual(access_by_partner[self.visitor.partner_id], "view")
 
     def test_removed_team_user_loses_synchronized_access(self):
         team = self.env["sharepoint.team"].create({
@@ -532,6 +601,7 @@ class TestSharePointTeam(TransactionCase):
         self.assertTrue(article.active)
         self.assertFalse(article.to_delete)
         self.assertEqual(article.parent_id, team.knowledge_article_id)
+        self.assertEqual(article.icon, "🎁")
         self.assertIn("Employee survey", article.body)
         self.assertIn("Vacation", article.body)
         self.assertIn("Useful links", article.body)
@@ -589,6 +659,29 @@ class TestSharePointTeam(TransactionCase):
         self.assertEqual(first_article.name, "Original first-site page")
         self.assertEqual(first_article.parent_id, first_team.knowledge_article_id)
         self.assertIn("Keep this content", first_article.body)
+
+    def test_graph_page_icons_follow_imported_page_content(self):
+        team = self.env["sharepoint.team"].create({"name": "Icon site"})
+        expected_icons = {
+            "BOZP": "🦺",
+            "Cesta zamestnanca": "🧭",
+            "Zamestnanecké benefity": "🎁",
+            "Hodnotenia a vzdelávanie zamestnancov": "🎓",
+            "Mzdy a odmeňovanie": "💶",
+            "Organizačná kultúra": "🤝",
+            "Komunikácia s médiami": "📰",
+            "Komunikačné nástroje": "💬",
+            "Licencie": "🔑",
+            "Ochrana dát, majetku a priestorov": "🛡️",
+            "Pracovná doba a evidencia dochádzky": "⏱️",
+            "Zásady platné pre služobné cesty": "✈️",
+            "Štandardy": "📐",
+            "Dokumenty": "📚",
+            "Domov": "🏠",
+        }
+        for title, icon in expected_icons.items():
+            self.assertEqual(team._graph_page_icon({"title": title}), icon)
+        self.assertEqual(team._graph_page_icon({"title": "Neznáma stránka"}), "🗂️")
 
     def test_graph_document_identity_cannot_move_between_teams(self):
         first_team = self.env["sharepoint.team"].create({"name": "First document site"})

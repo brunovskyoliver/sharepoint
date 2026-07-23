@@ -37,6 +37,9 @@ SITES = (
     {
         "key": "komteam",
         "site_path": "/sites/Web",
+        # KomTeam stores its content in the Documents library rather than on
+        # the single site page, so retain the complete library in its snapshot.
+        "include_all_drive_files": True,
     },
     {
         "key": "svi",
@@ -85,6 +88,7 @@ def main():
             args.output_dir / f"{key}-media",
             folder_url=site.get("folder_url"),
             folder_title=site.get("folder_title"),
+            include_all_drive_files=site.get("include_all_drive_files", False),
             max_bytes=args.max_file_size_mb * 1024 * 1024,
         )
 

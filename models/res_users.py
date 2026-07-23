@@ -24,6 +24,12 @@ class ResUsers(models.Model):
             users.write({"group_ids": [Command.link(documents_user_group.id)]})
         return len(users)
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        return super(ResUsers, self.with_context(
+            knowledge_skip_onboarding_article=True,
+        )).create(vals_list)
+
     def write(self, vals):
         res = super().write(vals)
         if (
@@ -32,3 +38,8 @@ class ResUsers(models.Model):
         ):
             self.env["sharepoint.team"].sudo()._sync_hr_portal_employee_visitors_all()
         return res
+
+    @api.model
+    def _tenenet_translate_knowledge_welcome_articles(self, create_missing=False):
+        """SharePoint databases do not use personal Knowledge welcome pages."""
+        return 0

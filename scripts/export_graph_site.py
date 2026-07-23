@@ -302,6 +302,23 @@ def discover_folder_files(page, drive_items, folder_url):
     return selected
 
 
+def discover_all_drive_files(page, drive_items):
+    """Select every file in a site's document libraries for one import page."""
+    selected = {}
+    for item in drive_items:
+        # Graph represents folders by the presence of ``folder``; its value
+        # may be an empty object for some list responses.
+        if "folder" in item:
+            continue
+        key = (item.get("driveId") or (item.get("parentReference") or {}).get("driveId"), item.get("id"))
+        selected[key] = {
+            "item": item,
+            "sourcePageIds": {page["id"]},
+            "discoveryReasons": {"all_drive_files"},
+        }
+    return selected
+
+
 def synthetic_folder_page(folder_url, title):
     return {
         "id": f"folder:{url_key(folder_url)}",
@@ -403,6 +420,7 @@ def export_site(
     media_dir,
     folder_url=None,
     folder_title=None,
+    include_all_drive_files=False,
     max_bytes=MAX_DOWNLOAD_BYTES,
 ):
     site = client.get_json(f"/sites/{site_hostname}:{quote(site_path, safe='/')}")
@@ -418,6 +436,10 @@ def export_site(
     else:
         pages = client.get_all(f"/sites/{site['id']}/pages/microsoft.graph.sitePage?$expand=canvasLayout")
         selected, external_urls = discover_files(pages, drive_items)
+        if include_all_drive_files:
+            library_page = synthetic_folder_page(site["webUrl"], "Dokumenty")
+            pages.append(library_page)
+            selected.update(discover_all_drive_files(library_page, drive_items))
 
     media_dir = Path(media_dir)
     output = Path(output)
@@ -433,6 +455,7 @@ def export_site(
             "siteHostname": site_hostname,
             "sitePath": site_path,
             "folderUrl": folder_url,
+            "includeAllDriveFiles": include_all_drive_files,
             "mediaDir": str(media_dir),
             "maxDownloadBytes": max_bytes,
             "downloadedDriveItems": sum("localFileName" in item for item in exported_items),

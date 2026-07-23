@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from export_graph_site import download_selected_files, discover_folder_files, synthetic_folder_page
+from export_graph_site import (
+    discover_all_drive_files,
+    download_selected_files,
+    discover_folder_files,
+    synthetic_folder_page,
+)
 
 
 class ExportGraphSiteTest(unittest.TestCase):
@@ -61,6 +66,20 @@ class ExportGraphSiteTest(unittest.TestCase):
         self.assertEqual(items[0]["downloadSkipped"], "size_limit")
         self.assertTrue(items[0]["placeholder"])
         self.assertNotIn("localFileName", items[0])
+
+    def test_all_drive_file_export_selects_every_file_but_not_folders(self):
+        page = synthetic_folder_page("https://example.com/sites/KomTeam/Documents", "Dokumenty")
+        items = [
+            {"id": "folder", "name": "FOTKY", "folder": {}, "driveId": "drive"},
+            {"id": "photo", "name": "cover.png", "file": {}, "driveId": "drive"},
+            {"id": "document", "name": "brief.pdf", "file": {}, "driveId": "drive"},
+        ]
+
+        selected = discover_all_drive_files(page, items)
+
+        self.assertEqual(set(selected), {("drive", "photo"), ("drive", "document")})
+        self.assertEqual(selected[("drive", "document")]["sourcePageIds"], {page["id"]})
+        self.assertEqual(selected[("drive", "document")]["discoveryReasons"], {"all_drive_files"})
 
 
 if __name__ == "__main__":

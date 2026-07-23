@@ -25,6 +25,24 @@ class SharePointTeam(models.Model):
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "name"
     _GRAPH_BANNER_WEBPART_TYPE = "cbe7b0a9-3504-44dd-a3a3-0e5cacd07788"
+    _GRAPH_PAGE_ICON_RULES = (
+        (("bozp", "bezpecnost pri praci", "safety"), "🦺"),
+        (("cesta zamestnanca", "employee journey", "onboarding"), "🧭"),
+        (("benefit",), "🎁"),
+        (("hodnoten", "vzdelav", "training", "career"), "🎓"),
+        (("mzdy", "odmen", "payroll", "compensation", "finance", "faktur"), "💶"),
+        (("organizacna kultura", "culture"), "🤝"),
+        (("komunikacia s mediami", "vztahy s mediami", "media"), "📰"),
+        (("komunikac", "communication", "teams", "chat"), "💬"),
+        (("licenc", "license"), "🔑"),
+        (("ochrana dat", "majetku", "priestorov", "security", "privacy", "gdpr"), "🛡️"),
+        (("pracovna doba", "dochadz", "attendance", "working time"), "⏱️"),
+        (("sluzobn", "travel"), "✈️"),
+        (("standard",), "📐"),
+        (("ambulancia", "zdrav", "psy", "apz", "svi"), "🩺"),
+        (("dokument", "document"), "📚"),
+        (("domov", "home"), "🏠"),
+    )
 
     name = fields.Char(string="Názov", required=True, tracking=True)
     sharepoint_source_key = fields.Char(string="Kľúč zdroja SharePoint", copy=False, index=True)
@@ -333,6 +351,16 @@ class SharePointTeam(models.Model):
             is_access_via_link_hidden=True,
             partners=partners,
         )
+        # The Documents access update above propagates to every child in the
+        # team library.  ONLYOFFICE keeps a parallel per-document role table,
+        # and its standard synchronizer only records roles on the root passed
+        # to ``action_update_access_rights``.  Without this explicit child
+        # sync, an imported file has Odoo write access but ONLYOFFICE falls
+        # back to its default ``view`` role.
+        team_documents = self.env["documents.document"].sudo().search([
+            ("id", "child_of", self.document_folder_id.id),
+        ])
+        team_documents._save_onlyoffice_roles(None, None, partners)
 
     def _sync_knowledge_access(self):
         self.ensure_one()
@@ -620,6 +648,7 @@ class SharePointTeam(models.Model):
             vals = {
                 "name": title,
                 "body": body,
+                "icon": self._graph_page_icon(page),
                 "parent_id": self.knowledge_article_id.id,
                 "internal_permission": False,
                 "is_desynchronized": False,
@@ -660,6 +689,28 @@ class SharePointTeam(models.Model):
             for webpart in column.get("webparts") or []
             if isinstance(webpart, dict)
         )
+
+    def _graph_page_icon(self, page):
+        """Choose a useful Knowledge emoji from the exported SharePoint page.
+
+        The source format has no portable page-icon field.  Match the title,
+        description and text webparts instead, so every managed site receives
+        the same useful treatment without relying on a site-specific import.
+        """
+        content = [page.get("title"), page.get("name"), page.get("description")]
+        content.extend(
+            webpart.get("innerHtml")
+            for webpart in self._iter_graph_page_webparts(page)
+            if webpart.get("innerHtml")
+        )
+        searchable_text = self._normalize_sharepoint_name(" ".join(filter(None, content)))
+        for keywords, icon in self._GRAPH_PAGE_ICON_RULES:
+            if any(
+                self._normalize_sharepoint_name(keyword) in searchable_text
+                for keyword in keywords
+            ):
+                return icon
+        return "🗂️"
 
     def _graph_page_to_knowledge_body(self, page, media_path=False, import_context=False):
         title = escape(page.get("title") or page.get("name") or _("Bez názvu"))
