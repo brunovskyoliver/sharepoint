@@ -1,21 +1,37 @@
+import { browser } from "@web/core/browser/browser";
 import { registry } from "@web/core/registry";
 
+const DOCUMENTS_FOLDER_STORAGE_KEY = "searchpanel_documents_document";
+
 export function getDocumentsActionContext(action, options = {}) {
+    const additionalContext = options.additionalContext || {};
     const context = {
         ...action.context,
-        ...(options.additionalContext || {}),
+        ...additionalContext,
     };
     const hasSpecificTarget =
         "searchpanel_default_user_folder_id" in context ||
         "documents_unique_folder_id" in context ||
         "documents_init_document_id" in context;
 
-    if (hasSpecificTarget && context.documents_init_folder_id === "MY") {
+    const hasPersistedFolder = Boolean(
+        browser.localStorage.getItem(DOCUMENTS_FOLDER_STORAGE_KEY)
+    );
+    const hasExplicitInitialFolder = "documents_init_folder_id" in additionalContext;
+
+    if (
+        context.documents_init_folder_id === "MY" &&
+        (hasSpecificTarget || (hasPersistedFolder && !hasExplicitInitialFolder))
+    ) {
         delete context.documents_init_folder_id;
     } else if (!("documents_init_folder_id" in context) && !hasSpecificTarget) {
         context.documents_init_folder_id = "MY";
     }
     return context;
+}
+
+export function getDocumentsActionViewType(options = {}) {
+    return options.viewType || browser.localStorage.getItem("documentsDefaultViewType") || "list";
 }
 
 async function documentActionPreference(env, action, options = {}) {
@@ -29,7 +45,7 @@ async function documentActionPreference(env, action, options = {}) {
         },
         {
             ...options,
-            viewType: "list",
+            viewType: getDocumentsActionViewType(options),
         }
     );
 }
