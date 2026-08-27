@@ -126,6 +126,17 @@ class TestSharePointTeam(TransactionCase):
         self.assertEqual(access_by_partner[self.member.partner_id], "edit")
         self.assertEqual(access_by_partner[self.visitor.partner_id], "view")
 
+    def test_document_access_sync_allows_sudo_for_non_admin_actor(self):
+        team = self.env["sharepoint.team"].create({
+            "name": "OnlyOffice sudo sync",
+            "member_ids": [
+                Command.create({"user_id": self.owner.id, "role": "owner"}),
+                Command.create({"user_id": self.member.id, "role": "member"}),
+            ],
+        })
+
+        team.with_user(self.member)._sync_document_access()
+
     def test_removed_team_user_loses_synchronized_access(self):
         team = self.env["sharepoint.team"].create({
             "name": "Finance",
