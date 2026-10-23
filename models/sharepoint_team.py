@@ -17,6 +17,10 @@ from lxml.etree import ParserError
 
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import split_every
+
+# Rows written per ORM call when team roles reach a document subtree.
+ACCESS_SYNC_BATCH = 1000
 
 
 class SharePointTeam(models.Model):
@@ -194,7 +198,8 @@ class SharePointTeam(models.Model):
         return teams
 
     def write(self, vals):
-        res = super().write(vals)
+        # Member commands sync once below, not once per created/updated/deleted member.
+        res = super(SharePointTeam, self.with_context(sharepoint_team_access_sync_pending=True)).write(vals)
         if {"name", "company_id"} & set(vals):
             self._sync_resource_metadata()
         if {"member_ids", "active"} & set(vals):
@@ -216,10 +221,10 @@ class SharePointTeam(models.Model):
         self._ensure_team_resources()
         managed_hr_portals = self.filtered("hr_portal_managed")
         if managed_hr_portals:
-            managed_hr_portals._sync_hr_portal_employee_visitors()
-            (self - managed_hr_portals)._sync_native_access()
+            managed_hr_portals._sync_hr_portal_employee_visitors(full=True)
+            (self - managed_hr_portals)._sync_native_access(full=True)
         else:
-            self._sync_native_access()
+            self._sync_native_access(full=True)
         return True
 
     def action_open_documents(self):
@@ -311,13 +316,20 @@ class SharePointTeam(models.Model):
             if team.knowledge_article_id:
                 team.knowledge_article_id.write({"name": team.name})
 
-    def _sync_native_access(self):
+    def _sync_native_access(self, full=False):
+        """Apply team roles to the library and the Knowledge page.
+
+        A membership change only pushes partners whose role on the library root
+        differs (``full=False``). ``full=True`` re-applies every role to every
+        document and repairs drift below the root; owners run it through
+        ``action_sync_access`` and the HR portal cron runs it daily.
+        """
         for team in self.sudo():
-            team._sync_document_access()
+            team._sync_document_access(full=full)
             team._sync_knowledge_access()
-            team.synced_partner_ids = [
-                Command.set(team._union_role_partners(team._get_team_role_partners()).ids)
-            ]
+            partners = team._union_role_partners(team._get_team_role_partners())
+            if partners != team.synced_partner_ids:
+                team.synced_partner_ids = [Command.set(partners.ids)]
 
     def _get_team_role_partners(self):
         self.ensure_one()
@@ -327,7 +339,7 @@ class SharePointTeam(models.Model):
             partners_by_role[member.role] |= member.user_id.partner_id
         return partners_by_role
 
-    def _sync_document_access(self):
+    def _sync_document_access(self, full=True):
         self.ensure_one()
         if not self.document_folder_id:
             return
@@ -347,7 +359,12 @@ class SharePointTeam(models.Model):
         for partner in self.synced_partner_ids - current_partners:
             partners[partner] = (False, False)
 
-        self.document_folder_id.sudo().action_update_access_rights(
+        folder = self.document_folder_id.sudo()
+        if not full:
+            partners = self._changed_root_partners(folder, partners)
+            if not partners and self._root_access_is_closed(folder):
+                return
+        folder.action_update_access_rights(
             access_internal="none",
             access_via_link="none",
             is_access_via_link_hidden=True,
@@ -359,10 +376,82 @@ class SharePointTeam(models.Model):
         # to ``action_update_access_rights``.  Without this explicit child
         # sync, an imported file has Odoo write access but ONLYOFFICE falls
         # back to its default ``view`` role.
-        team_documents = self.env["documents.document"].sudo().search([
-            ("id", "child_of", self.document_folder_id.id),
+        if partners:
+            team_documents = self.env["documents.document"].sudo().search([
+                ("id", "child_of", folder.id),
+            ])
+            self._save_onlyoffice_roles_batched(team_documents, partners)
+
+    def _changed_root_partners(self, folder, partners):
+        """Keep the partners whose Documents or ONLYOFFICE role on ``folder`` differs."""
+        native = {access.partner_id: (access.role, access.expiration_date) for access in folder.access_ids}
+        onlyoffice = defaultdict(set)
+        for row in self.env["onlyoffice.odoo.documents.access.user"].sudo().search([
+            ("document_id", "=", folder.id),
+        ]):
+            onlyoffice[row.user_id].add(row.role)
+        changed = {}
+        for partner, (role, expiration) in partners.items():
+            if role is False:
+                stale = partner in native or partner in onlyoffice
+            else:
+                stale = native.get(partner) != (role, expiration) or onlyoffice.get(partner) != {role}
+            if stale:
+                changed[partner] = (role, expiration)
+        return changed
+
+    def _root_access_is_closed(self, folder):
+        row = self.env["onlyoffice.odoo.documents.access"].sudo().search([("document_id", "=", folder.id)], limit=1)
+        return (
+            folder.access_internal == "none"
+            and folder.access_via_link == "none"
+            and folder.is_access_via_link_hidden
+            and row.internal_users == "none"
+            and row.link_access == "none"
+        )
+
+    def _save_onlyoffice_roles_batched(self, documents, partners):
+        """Set-based ``documents._save_onlyoffice_roles(None, None, partners)``.
+
+        Same end state as the per-document synchronizer: every document gets an
+        access row (kept if present, otherwise closed), removed partners lose
+        their rows and every other partner holds exactly ``role``. Only rows
+        that differ are written, in batches.
+        """
+        if not documents or not partners:
+            return
+        Access = self.env["onlyoffice.odoo.documents.access"].sudo()
+        AccessUser = self.env["onlyoffice.odoo.documents.access.user"].sudo()
+        covered = set(Access.search([("document_id", "in", documents.ids)]).document_id.ids)
+        for batch in split_every(ACCESS_SYNC_BATCH, [doc_id for doc_id in documents.ids if doc_id not in covered]):
+            Access.create([
+                {"document_id": doc_id, "internal_users": "none", "link_access": "none"} for doc_id in batch
+            ])
+
+        role_by_partner = {partner.id: role for partner, (role, _expiration) in partners.items()}
+        rows = AccessUser.search([
+            ("document_id", "in", documents.ids),
+            ("user_id", "in", list(role_by_partner)),
         ])
-        team_documents._save_onlyoffice_roles(None, None, partners)
+        rows.filtered(lambda row: role_by_partner[row.user_id.id] is False).unlink()
+        rows = rows.exists()
+        rows_by_role = defaultdict(lambda: AccessUser)
+        present = set()
+        for row in rows:
+            role = role_by_partner[row.user_id.id]
+            present.add((row.document_id.id, row.user_id.id))
+            if row.role != role:
+                rows_by_role[role] |= row
+        for role, role_rows in rows_by_role.items():
+            role_rows.write({"role": role})
+        missing = [
+            {"document_id": doc_id, "user_id": partner_id, "role": role}
+            for doc_id in documents.ids
+            for partner_id, role in role_by_partner.items()
+            if role and (doc_id, partner_id) not in present
+        ]
+        for batch in split_every(ACCESS_SYNC_BATCH, missing):
+            AccessUser.create(list(batch))
 
     def _sync_knowledge_access(self):
         self.ensure_one()
@@ -388,7 +477,8 @@ class SharePointTeam(models.Model):
         for partner, permission in permission_by_partner.items():
             member = existing_members.get(partner)
             if member:
-                commands.append(Command.update(member.id, {"permission": permission}))
+                if member.permission != permission:
+                    commands.append(Command.update(member.id, {"permission": permission}))
             else:
                 commands.append(Command.create({"partner_id": partner.id, "permission": permission}))
         current_partners = self._union_role_partners(partners_by_role)
@@ -397,10 +487,11 @@ class SharePointTeam(models.Model):
             if member:
                 commands.append(Command.delete(member.id))
 
-        article.with_context(knowledge_member_skip_writable_check=True).write({
-            "internal_permission": "none",
-            "article_member_ids": commands,
-        })
+        vals = {"article_member_ids": commands} if commands else {}
+        if article.internal_permission != "none":
+            vals["internal_permission"] = "none"
+        if vals:
+            article.with_context(knowledge_member_skip_writable_check=True).write(vals)
 
     def _union_role_partners(self, partners_by_role):
         partners = self.env["res.partner"]
@@ -531,14 +622,14 @@ class SharePointTeam(models.Model):
 
     @api.model
     def _cron_sync_hr_portal_employee_visitors(self):
-        return self._sync_hr_portal_employee_visitors_all()
+        return self._sync_hr_portal_employee_visitors_all(full=True)
 
     @api.model
-    def _sync_hr_portal_employee_visitors_all(self):
+    def _sync_hr_portal_employee_visitors_all(self, full=False):
         team = self._get_or_create_hr_portal_team()
-        return team._sync_hr_portal_employee_visitors()
+        return team._sync_hr_portal_employee_visitors(full=full)
 
-    def _sync_hr_portal_employee_visitors(self):
+    def _sync_hr_portal_employee_visitors(self, full=False):
         total_members = 0
         for team in self.sudo():
             team._ensure_team_resources()
@@ -566,8 +657,8 @@ class SharePointTeam(models.Model):
                     commands.append(Command.delete(member.id))
             if commands:
                 team.with_context(sharepoint_hr_portal_sync=True).write({"member_ids": commands})
-            else:
-                team._sync_native_access()
+            if full or not commands:
+                team._sync_native_access(full=full)
             total_members += len(target_users)
         return total_members
 
@@ -1906,7 +1997,8 @@ class SharePointTeamMember(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         members = super().create(vals_list)
-        members.team_id._sync_native_access()
+        if not self.env.context.get("sharepoint_team_access_sync_pending"):
+            members.team_id._sync_native_access()
         return members
 
     def write(self, vals):
@@ -1917,12 +2009,13 @@ class SharePointTeamMember(models.Model):
         ):
             vals = {**vals, "source": "manual"}
         res = super().write(vals)
-        if {"user_id", "role"} & set(vals):
+        if {"user_id", "role"} & set(vals) and not self.env.context.get("sharepoint_team_access_sync_pending"):
             self.team_id._sync_native_access()
         return res
 
     def unlink(self):
         teams = self.team_id
         res = super().unlink()
-        teams._sync_native_access()
+        if not self.env.context.get("sharepoint_team_access_sync_pending"):
+            teams._sync_native_access()
         return res
