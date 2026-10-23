@@ -151,6 +151,99 @@ class TestSharePointTeam(TransactionCase):
         self.assertNotIn(self.member.partner_id, team.document_folder_id.access_ids.partner_id)
         self.assertNotIn(self.member.partner_id, team.knowledge_article_id.article_member_ids.partner_id)
 
+    def _team_with_document(self, name):
+        team = self.env["sharepoint.team"].create({
+            "name": name,
+            "member_ids": [
+                Command.create({"user_id": self.owner.id, "role": "owner"}),
+                Command.create({"user_id": self.member.id, "role": "member"}),
+            ],
+        })
+        document = self.env["documents.document"].sudo().create({
+            "name": "Team file.docx",
+            "type": "binary",
+            "folder_id": team.document_folder_id.id,
+            "datas": base64.b64encode(b"test"),
+        })
+        team._sync_document_access()
+        return team, document
+
+    def _onlyoffice_roles(self, document):
+        return {
+            row.user_id: row.role
+            for row in self.env["onlyoffice.odoo.documents.access.user"].sudo().search([
+                ("document_id", "=", document.id),
+            ])
+        }
+
+    def _native_roles(self, document):
+        return {access.partner_id: access.role for access in document.sudo().access_ids}
+
+    def test_membership_change_touches_only_changed_partner_until_owner_repairs(self):
+        team, document = self._team_with_document("Incremental team")
+        # Drift below the root that only a full repair may correct.
+        document.sudo().access_ids.filtered(lambda access: access.partner_id == self.owner.partner_id).role = "view"
+        self.env["onlyoffice.odoo.documents.access.user"].sudo().search([
+            ("document_id", "=", document.id), ("user_id", "=", self.member.partner_id.id),
+        ]).unlink()
+
+        team.write({"member_ids": [Command.create({"user_id": self.visitor.id, "role": "visitor"})]})
+
+        self.assertEqual(self._native_roles(document)[self.visitor.partner_id], "view")
+        self.assertEqual(self._onlyoffice_roles(document)[self.visitor.partner_id], "view")
+        self.assertEqual(self._native_roles(document)[self.owner.partner_id], "view")
+        self.assertNotIn(self.member.partner_id, self._onlyoffice_roles(document))
+
+        self.assertTrue(team.with_user(self.owner).action_sync_access())
+
+        self.assertEqual(self._native_roles(document)[self.owner.partner_id], "edit")
+        self.assertEqual(self._onlyoffice_roles(document), {
+            self.owner.partner_id: "edit",
+            self.member.partner_id: "edit",
+            self.visitor.partner_id: "view",
+        })
+
+    def test_member_commands_sync_team_access_once(self):
+        team, _document = self._team_with_document("Coalesced team")
+        Team = type(team)
+        original = Team._sync_document_access
+        calls = []
+
+        def spy(record, full=True):
+            calls.append(full)
+            return original(record, full=full)
+
+        member = team.member_ids.filtered(lambda rec: rec.user_id == self.member)
+        with patch.object(Team, "_sync_document_access", spy):
+            team.write({"member_ids": [
+                Command.create({"user_id": self.visitor.id, "role": "visitor"}),
+                Command.update(member.id, {"role": "admin"}),
+            ]})
+        self.assertEqual(calls, [False])
+
+    def test_removed_member_loses_child_document_access_immediately(self):
+        team, document = self._team_with_document("Revocation team")
+        member = team.member_ids.filtered(lambda rec: rec.user_id == self.member)
+
+        team.write({"member_ids": [Command.delete(member.id)]})
+
+        self.assertNotIn(self.member.partner_id, self._native_roles(document))
+        self.assertNotIn(self.member.partner_id, self._onlyoffice_roles(document))
+        self.assertNotIn(self.member.partner_id, team.document_folder_id.access_ids.partner_id)
+        self.assertNotIn(self.member.partner_id, team.knowledge_article_id.article_member_ids.partner_id)
+        self.assertEqual(self._native_roles(document)[self.owner.partner_id], "edit")
+
+    def test_unchanged_hr_portal_membership_skips_document_tree(self):
+        team = self.env["sharepoint.team"].sudo()._get_or_create_hr_portal_team()
+        team._sync_hr_portal_employee_visitors(full=True)
+        Document = type(self.env["documents.document"])
+        with patch.object(Document, "action_update_access_rights", autospec=True) as update, \
+                patch.object(Document, "_save_onlyoffice_roles", autospec=True) as save:
+            self.env["hr.employee"].create({"name": "Employee without user"})
+            self.env["sharepoint.team"].sudo()._sync_hr_portal_employee_visitors_all()
+        update.assert_not_called()
+        save.assert_not_called()
+
     def test_hr_portal_auto_adds_active_employee_user_as_visitor(self):
         employee_user = self._create_user("sp.employee")
         self.env["hr.employee"].create({
