@@ -211,6 +211,8 @@ class SharePointTeam(models.Model):
         return True
 
     def action_sync_access(self):
+        # The resource and role sync below runs under sudo: authorize the caller first.
+        self.check_access("write")
         self._ensure_team_resources()
         managed_hr_portals = self.filtered("hr_portal_managed")
         if managed_hr_portals:
@@ -569,6 +571,10 @@ class SharePointTeam(models.Model):
             total_members += len(target_users)
         return total_members
 
+    # The importers below read a server-side path and write under sudo. They
+    # stay callable from trusted Python (scripts/run_full_import.py, odoo shell)
+    # but never through RPC.
+    @api.private
     def action_import_hr_portal_graph_pages(self, export_path, media_dir=False):
         self.ensure_one()
         if not self.hr_portal_managed:
@@ -576,12 +582,14 @@ class SharePointTeam(models.Model):
         self._sync_hr_portal_employee_visitors()
         return self.import_graph_site_pages(export_path, media_dir=media_dir)
 
+    @api.private
     @api.model
     def import_hr_portal_graph_pages(self, export_path, media_dir=False):
         team = self._get_or_create_hr_portal_team()
         team._sync_hr_portal_employee_visitors()
         return team.import_graph_site_pages(export_path, media_dir=media_dir)
 
+    @api.private
     def import_graph_site_pages(self, export_path, media_dir=False):
         """Import a saved Microsoft Graph site export into this managed team."""
         self.ensure_one()
