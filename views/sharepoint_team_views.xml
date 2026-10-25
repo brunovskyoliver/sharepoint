@@ -23,11 +23,11 @@
             <list>
                 <field name="name"/>
                 <field name="user_role"/>
-                <field name="document_count"/>
-                <field name="page_count"/>
-                <field name="hr_portal_managed"/>
+                <field name="document_count" string="Dokumenty"/>
+                <field name="page_count" string="Stránky"/>
+                <field name="hr_portal_managed" optional="hide"/>
                 <field name="company_id" groups="base.group_multi_company"/>
-                <field name="active"/>
+                <field name="active" optional="hide"/>
             </list>
         </field>
     </record>
@@ -136,7 +136,7 @@
     </record>
 
     <record id="action_sharepoint_team_hub" model="ir.actions.act_window">
-        <field name="name">SharePoint</field>
+        <field name="name">Tímy</field>
         <field name="res_model">sharepoint.team</field>
         <field name="view_mode">kanban,list,form</field>
         <field name="context">{'search_default_my_teams': 1}</field>
