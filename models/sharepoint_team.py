@@ -240,7 +240,9 @@ class SharePointTeam(models.Model):
                 "documents_unique_folder_id": self.document_folder_id.id,
                 "searchpanel_default_user_folder_id": self.document_folder_id.id,
                 "default_folder_id": self.document_folder_id.id,
-                "default_user_folder_id": str(self.document_folder_id.id),
+                # No default_user_folder_id: the Documents client sends it with
+                # every upload next to the folder token, and the upload route
+                # rejects that pair with 400 "Incorrect token/user_folder_id values".
             },
             "target": "self",
         }
