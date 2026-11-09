@@ -1,0 +1,18 @@
+<odoo>
+    <record id="view_tenenet_project_form_documents" model="ir.ui.view">
+        <field name="name">tenenet.project.form.sharepoint.documents</field>
+        <field name="model">tenenet.project</field>
+        <field name="inherit_id" ref="tenenet_projects.view_tenenet_project_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[hasclass('oe_title')]" position="before">
+                <div class="oe_button_box" name="button_box" invisible="not id or not can_open_project_documents">
+                    <button name="action_open_project_documents"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-folder-open"
+                            string="Dokumenty"/>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>

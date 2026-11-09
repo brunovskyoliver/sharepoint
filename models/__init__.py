@@ -5,3 +5,4 @@ from . import res_users
 from . import knowledge_article
 from . import tenenet_employee_evaluation
 from . import sign_request
+from . import tenenet_project_documents
